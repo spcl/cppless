@@ -12,7 +12,7 @@ endif()
 add_custom_target(run-examples)
 
 function(add_example NAME)
-  add_compile_options(-cppless -falt-entry -v)
+  add_compile_options(-cppless -falt-entry)
   add_link_options(-cppless -falt-entry)
 
   add_executable("${NAME}" "${NAME}.cpp")

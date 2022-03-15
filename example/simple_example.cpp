@@ -5,7 +5,7 @@ template<class L>
 class entry_wrapper
 {
 public:
-  __attribute((entry)) static int test123(int argc, char* argv[])
+  __attribute((entry)) static int test123(int, char*[])
   {
     L l;
     std::cout << "Hello from " << l() << std::endl;
@@ -14,16 +14,17 @@ public:
 };
 
 template<class L>
-auto generate(L l) -> void
+auto generate(L) -> void
 {
-  entry_wrapper<L> _r;
+  entry_wrapper<L> x;
+  (void)x;
 }
 
-auto main(int argc, char* argv[]) -> int
+auto main(int, char* argv[]) -> int
 {
   generate([]() { return "A"; });
   generate([]() { return "B"; });
 
-  std::cout << __builtin_unique_stable_name(int) << std::endl;
+  std::cout << __builtin_unique_stable_name(double) << std::endl;
   std::cout << argv[0] << std::endl;
 }
