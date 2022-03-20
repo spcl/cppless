@@ -1,11 +1,6 @@
 #pragma once
 
-#include <string>
-
-/**
- * @brief Return the name of this header-only library
- */
-inline auto name() -> std::string
-{
-  return "cppless";
-}
+#include "fixed_string.hpp"
+#include "sendable.hpp"
+#include "serialization.hpp"
+#include "task.hpp"

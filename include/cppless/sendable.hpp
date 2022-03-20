@@ -1,7 +1,10 @@
 #pragma once
 
+#include <iostream>
 #include <string>
 #include <type_traits>
+
+#include "serialization.hpp"
 
 template<typename Res, typename... Args>
 struct sendable_base
@@ -43,12 +46,18 @@ public:
   virtual typename std::invoke_result<F, Args...>::type deserialize(
       byte_source& src)
   {
+    // TODO
+    (void)src;
     typename std::invoke_result<F, Args...>::type x;
     return x;
   }
 
   __attribute((entry)) static int main(int argc, char** argv)
   {
-    // Hello
+    std::cout << "Called with: ";
+    for (int i = 0; i < argc; ++i) {
+      std::cout << argv[i] << " ";
+    }
+    std::cout << std::endl;
   }
 };

@@ -12,7 +12,7 @@ endif()
 add_custom_target(run-examples)
 
 function(add_example NAME)
-  add_compile_options(-cppless -falt-entry)
+  add_compile_options(-cppless -falt-entry "-ffile-prefix-map=${CMAKE_SOURCE_DIR}=.")
   add_link_options(-cppless -falt-entry)
 
   add_executable("${NAME}" "${NAME}.cpp")

@@ -37,10 +37,11 @@ inline byte_source& operator>>(byte_source& is, unsigned char& c)
 // Ints are serialized and deserialized as 32 bit
 inline byte_sink& operator<<(byte_sink& os, int i)
 {
-  os << (unsigned char)(i & 0x000000ff);
-  os << (unsigned char)((i & 0x0000ff00) >> 8);
-  os << (unsigned char)((i & 0x00ff0000) >> 16);
-  os << (unsigned char)((i & 0xff000000) >> 24);
+  unsigned int ui = (unsigned int)i;
+  os << (unsigned char)((ui & 0x000000ffU) >> 0);
+  os << (unsigned char)((ui & 0x0000ff00U) >> 8);
+  os << (unsigned char)((ui & 0x00ff0000U) >> 16);
+  os << (unsigned char)((ui & 0xff000000U) >> 24);
   return os;
 }
 
@@ -70,7 +71,7 @@ template<typename... Ts>
 inline void serialize_all(byte_sink& dst, Ts const&... rest)
 {
   if constexpr (sizeof...(rest) > 0) {
-    serialize_all_helper(dst, Ts...);
+    serialize_all_helper(dst, rest...);
   }
 }
 
@@ -87,6 +88,6 @@ template<typename... Ts>
 inline void deserialize_all(byte_source& src, Ts&... rest)
 {
   if constexpr (sizeof...(rest) > 0) {
-    deserialize_all_helper(src, Ts...);
+    deserialize_all_helper(src, rest...);
   }
 }

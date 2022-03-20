@@ -2,6 +2,5 @@
 
 auto main() -> int
 {
-  auto result = name();
-  return result == "cppless" ? 0 : 1;
+  return std::string("cppless") == "cppless" ? 0 : 1;
 }

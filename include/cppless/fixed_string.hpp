@@ -1,123 +1,131 @@
+#pragma once
+
 #include <iostream>
 #include <string>
 #include <string_view>
 
 // Adopted from
 // http://www.open-std.org/jtc1/sc22/wg21/docs/papers/2016/p0259r0.pdf
-template<class charT, size_t N>
+template<class CharT, size_t S>
 class basic_fixed_string
 {
 public:
   using size_type = size_t;
-  using value_type = charT;
+  using value_type = CharT;
+
+  static constexpr size_t n = S - 1;
 
   using reference = value_type&;
   using const_reference = const value_type&;
 
   constexpr basic_fixed_string();
-  constexpr basic_fixed_string(const charT (&a)[N + 1]);
+  constexpr explicit basic_fixed_string(const value_type (&a)[S]);  // NOLINT
 
-  constexpr size_type size() const noexcept;
-  constexpr const charT* data() const noexcept;
+  [[nodiscard]] constexpr auto size() const noexcept -> size_type;
+  [[nodiscard]] constexpr auto data() const noexcept -> const value_type*;
 
-  constexpr const_reference operator[](size_type pos) const noexcept;
-  constexpr reference operator[](size_type pos) noexcept;
+  constexpr auto operator[](size_type pos) const noexcept -> const_reference;
+  constexpr auto operator[](size_type pos) noexcept -> reference;
 
-private:
-  char data_[N + 1];
+  value_type data_[S];  // NOLINT
 };
 
-template<class charT, size_t N>
-constexpr basic_fixed_string<charT, N>::basic_fixed_string()
+template<class CharT, size_t S>
+constexpr basic_fixed_string<CharT, S>::basic_fixed_string()
+    : data_()
 {
-  data_[N] = 0;
-}
-
-template<class charT, size_t N>
-constexpr basic_fixed_string<charT, N>::basic_fixed_string(
-    const charT (&a)[N + 1])
-{
-  for (int i = 0; i < N; i++) {
-    data_[i] = a[i];
+  for (size_t i = 0; i < S; i++) {
+    data_[i] = CharT(0);
   }
-  data_[N] = 0;
 }
 
-template<class charT, size_t N>
-constexpr size_t basic_fixed_string<charT, N>::size() const noexcept
+template<class CharT, size_t S>
+constexpr basic_fixed_string<CharT, S>::basic_fixed_string(
+    const CharT (&a)[S])  // NOLINT
 {
-  return N;
+  for (size_t i = 0; i < S; i++) {
+    data_[i] = a[i];  // NOLINT
+  }
 }
 
-template<class charT, size_t N>
-constexpr const charT* basic_fixed_string<charT, N>::data() const noexcept
+template<class CharT, size_t S>
+constexpr auto basic_fixed_string<CharT, S>::size() const noexcept -> size_t
+{
+  return S - 1;
+}
+
+template<class CharT, size_t S>
+constexpr auto basic_fixed_string<CharT, S>::data() const noexcept
+    -> const CharT*
 {
   return data_;
 }
 
-template<class charT, size_t N>
-constexpr typename basic_fixed_string<charT, N>::const_reference
-basic_fixed_string<charT, N>::operator[](size_type pos) const noexcept
+template<class CharT, size_t S>
+constexpr auto basic_fixed_string<CharT, S>::operator[](size_type pos)
+    const noexcept -> typename basic_fixed_string<CharT, S>::const_reference
 {
   return data_[pos];
 }
 
-template<class charT, size_t N>
-constexpr typename basic_fixed_string<charT, N>::reference
-basic_fixed_string<charT, N>::operator[](size_type pos) noexcept
+template<class CharT, size_t S>
+constexpr auto basic_fixed_string<CharT, S>::operator[](size_type pos) noexcept
+    -> typename basic_fixed_string<CharT, S>::reference
 {
   return data_[pos];
 }
 
-template<class charT, size_t N, size_t M>
-constexpr basic_fixed_string<charT, N + M> operator+(
-    const basic_fixed_string<charT, N>& lhs,
-    const basic_fixed_string<charT, M>& rhs) noexcept
+template<class CharT, size_t N, size_t M>
+constexpr auto operator+(const basic_fixed_string<CharT, N>& lhs,
+                         const basic_fixed_string<CharT, M>& rhs) noexcept
+    -> basic_fixed_string<CharT, N + M - 1>
 {
-  basic_fixed_string<charT, N + M> res;
-  for (int i = 0; i < N; i++) {
+  basic_fixed_string<CharT, N + M - 1> res;
+  for (size_t i = 0; i < N - 1; i++) {
     res[i] = lhs[i];
   }
-  for (int j = 0; j < M; j++) {
-    res[N + j] = rhs[j];
+  for (size_t j = 0; j < M - 1; j++) {
+    res[N + j - 1] = rhs[j];
   }
   return res;
 }
 
-template<class charT, size_t N, size_t M>
-constexpr basic_fixed_string<charT, N + M - 1> operator+(
-    const basic_fixed_string<charT, N>& lhs, const charT (&rhs)[M]) noexcept
+template<class CharT, size_t N, size_t M>
+constexpr auto operator+(const basic_fixed_string<CharT, N>& lhs,
+                         const CharT (&rhs)[M]) noexcept  // NOLINT
+    -> basic_fixed_string<CharT, N + M - 1>
 {
-  basic_fixed_string<charT, M - 1> r(rhs);
+  basic_fixed_string<CharT, M> r(rhs);
   return lhs + r;
 }
 
-template<class charT, size_t N, size_t M>
-constexpr basic_fixed_string<charT, N + M - 1> operator+(
-    const charT (&lhs)[N], const basic_fixed_string<charT, M>& rhs) noexcept
+template<class CharT, size_t N, size_t M>
+constexpr auto operator+(const CharT (&lhs)[N],  // NOLINT
+                         const basic_fixed_string<CharT, M>& rhs) noexcept
+    -> basic_fixed_string<CharT, N + M - 1>
 {
-  basic_fixed_string<charT, N - 1> l(lhs);
+  basic_fixed_string<CharT, N> l(lhs);
   return l + rhs;
 }
 
-template<class charT, size_t N>
-std::ostream& operator<<(std::ostream& os,
-                         const basic_fixed_string<charT, N>& str)
+template<class CharT, size_t N>
+auto operator<<(std::ostream& os, const basic_fixed_string<CharT, N>& str)
+    -> std::ostream&
 {
   os << str.data();
   return os;
 }
 
-template<class charT, size_t X>
-constexpr basic_fixed_string<charT, X - 1> make_fixed_string(
-    const charT (&a)[X]) noexcept
+template<class CharT, size_t X>
+constexpr auto make_fixed_string(const CharT (&a)[X]) noexcept  // NOLINT
+    -> basic_fixed_string<CharT, X>
 {
-  basic_fixed_string<charT, X - 1> s {a};
+  basic_fixed_string<CharT, X> s {a};
   return s;
 }
 
-template<class charT>
-constexpr size_t length(const charT* c_str) noexcept
+template<class CharT>
+constexpr auto length(const CharT* c_str) noexcept -> size_t
 {
   size_t len = 0;
   while (*c_str++) {
@@ -147,7 +155,7 @@ constexpr auto type_unique_name() noexcept
   constexpr size_t l = length(name) - 1;
 #endif
   basic_fixed_string<char, l> s;
-  for (int i = 0; i < length(name); i++) {
+  for (size_t i = 0; i < length(name); i++) {
     s[i] = name[i];
   }
   return s;
@@ -176,3 +184,22 @@ constexpr auto types_unique_names()
 
 template<size_t N>
 using fixed_string = basic_fixed_string<char, N>;
+
+template<size_t S>
+class intermediate_fixed_string
+{
+public:
+  constexpr intermediate_fixed_string(const char (&a)[S])  // NOLINT
+  {
+    for (size_t i = 0; i < S; i++) {
+      data[i] = a[i];  // NOLINT
+    }
+  };
+  char data[S] {};  // NOLINT
+};
+
+template<intermediate_fixed_string S>
+constexpr auto operator"" _f()
+{
+  return make_fixed_string(S.data);
+}

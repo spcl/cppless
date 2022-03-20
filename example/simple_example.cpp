@@ -1,30 +1,12 @@
 #include <iostream>
+#include <map>
+#include <memory>
 #include <string>
 
-template<class L>
-class entry_wrapper
-{
-public:
-  __attribute((entry)) static int test123(int, char*[])
-  {
-    L l;
-    std::cout << "Hello from " << l() << std::endl;
-    return 0;
-  }
-};
+#include "cppless/fixed_string.hpp"
+#include "cppless/fixed_value.hpp"
 
-template<class L>
-auto generate(L) -> void
+auto main(int /*argc*/, char* /*argv*/[]) -> int
 {
-  entry_wrapper<L> x;
-  (void)x;
-}
-
-auto main(int, char* argv[]) -> int
-{
-  generate([]() { return "A"; });
-  generate([]() { return "B"; });
-
-  std::cout << __builtin_unique_stable_name(double) << std::endl;
-  std::cout << argv[0] << std::endl;
+  auto m = test();
 }
