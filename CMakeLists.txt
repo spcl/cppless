@@ -2,7 +2,7 @@ cmake_minimum_required(VERSION 3.14)
 
 set( CMAKE_SYSTEM_NAME Darwin )
 
-set( COMPILER_BIN /Users/lukasmoller/BThes/llvm-project/build/bin )
+set( COMPILER_BIN ${CMAKE_SOURCE_DIR}/llvm-project/build/bin )
 set( CMAKE_C_COMPILER ${COMPILER_BIN}/clang CACHE PATH "clang" )
 set( CMAKE_CXX_COMPILER ${COMPILER_BIN}/clang++ CACHE PATH "clang++" )
 
