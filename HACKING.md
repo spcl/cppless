@@ -41,7 +41,7 @@ the project:
     {
       "name": "dev",
       "binaryDir": "${sourceDir}/build/dev",
-      "inherits": ["dev-mode", "ci-<os>"],
+      "inherits": ["dev-mode", "ci-macos"],
       "cacheVariables": {
         "CMAKE_BUILD_TYPE": "Debug"
       }
@@ -82,6 +82,7 @@ the project respectively with the following commands from the project root on
 any operating system with any build system:
 
 ```sh
+conan install . -if conan -s build_type=Debug -b missing
 cmake --preset=dev
 cmake --build --preset=dev
 ctest --preset=dev

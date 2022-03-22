@@ -3,8 +3,8 @@
 include(FetchContent)
 FetchContent_Declare(
     mcss URL
-    https://github.com/friendlyanon/m.css/releases/download/release-1/mcss.zip
-    URL_MD5 00cd2757ebafb9bcba7f5d399b3bec7f
+    https://github.com/mosra/m.css/archive/a0d292ec311b97fefd21e93cdefb60f88d19ede6.zip
+    URL_MD5 9a20fb687f763ce7d54aa4d37e386230
     SOURCE_DIR "${PROJECT_BINARY_DIR}/mcss"
     UPDATE_DISCONNECTED YES
 )

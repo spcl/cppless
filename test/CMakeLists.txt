@@ -10,8 +10,11 @@ if(PROJECT_IS_TOP_LEVEL)
   find_package(cppless REQUIRED)
   enable_testing()
 endif()
-
+  
 add_executable(cppless_test source/cppless_test.cpp)
+  
+find_package(ut REQUIRED)
+target_link_libraries(cppless_test PRIVATE boost::ut)
 target_link_libraries(cppless_test PRIVATE cppless::cppless)
 target_compile_features(cppless_test PRIVATE cxx_std_20)
 

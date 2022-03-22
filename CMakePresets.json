@@ -37,6 +37,13 @@
       }
     },
     {
+      "name": "conan",
+      "hidden": true,
+      "cacheVariables": {
+        "CMAKE_TOOLCHAIN_FILE": "${sourceDir}/conan/conan_toolchain.cmake"
+      }
+    },
+    {
       "name": "clang-tidy",
       "hidden": true,
       "cacheVariables": {
@@ -98,7 +105,7 @@
     },
     {
       "name": "ci-coverage",
-      "inherits": ["coverage-unix", "dev-mode"],
+      "inherits": ["coverage-unix", "dev-mode", "conan"],
       "cacheVariables": {
         "COVERAGE_HTML_COMMAND": ""
       }
@@ -119,15 +126,22 @@
     },
     {
       "name": "ci-macos",
-      "inherits": ["ci-build", "ci-unix", "dev-mode"]
+      "inherits": ["ci-build", "ci-unix", "dev-mode", "conan"]
     },
     {
       "name": "ci-ubuntu",
-      "inherits": ["ci-build", "ci-unix", "clang-tidy", "cppcheck", "dev-mode"]
+      "inherits": [
+        "ci-build",
+        "ci-unix",
+        "clang-tidy",
+        "cppcheck",
+        "dev-mode",
+        "conan"
+      ]
     },
     {
       "name": "ci-windows",
-      "inherits": ["ci-build", "ci-win64", "dev-mode"]
+      "inherits": ["ci-build", "ci-win64", "dev-mode", "conan"]
     }
   ]
 }

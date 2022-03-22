@@ -24,6 +24,8 @@ public:
   [[nodiscard]] constexpr auto size() const noexcept -> size_type;
   [[nodiscard]] constexpr auto data() const noexcept -> const value_type*;
 
+  [[nodiscard]] auto str() const noexcept -> std::string;
+
   constexpr auto operator[](size_type pos) const noexcept -> const_reference;
   constexpr auto operator[](size_type pos) noexcept -> reference;
 
@@ -59,6 +61,12 @@ constexpr auto basic_fixed_string<CharT, S>::data() const noexcept
     -> const CharT*
 {
   return data_;
+}
+
+template<class CharT, size_t S>
+auto basic_fixed_string<CharT, S>::str() const noexcept -> std::string
+{
+  return std::string {data_};
 }
 
 template<class CharT, size_t S>
@@ -139,9 +147,7 @@ template<class T>
 constexpr auto type_display_name() noexcept
 {
   auto s = __PRETTY_FUNCTION__;
-  while (*s != '=')
-    s++;
-  return s + 2;
+  return s;
 }
 
 template<class T>
@@ -152,8 +158,9 @@ constexpr auto type_unique_name() noexcept
   constexpr size_t l = length(name);
 #else
   constexpr auto name = type_display_name<T>();
-  constexpr size_t l = length(name) - 1;
+  constexpr size_t l = length(name);
 #endif
+
   basic_fixed_string<char, l> s;
   for (size_t i = 0; i < length(name); i++) {
     s[i] = name[i];

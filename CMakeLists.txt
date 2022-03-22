@@ -5,6 +5,7 @@ set( CMAKE_SYSTEM_NAME Darwin )
 set( COMPILER_BIN ${CMAKE_SOURCE_DIR}/llvm-project/build/bin )
 set( CMAKE_C_COMPILER ${COMPILER_BIN}/clang CACHE PATH "clang" )
 set( CMAKE_CXX_COMPILER ${COMPILER_BIN}/clang++ CACHE PATH "clang++" )
+set( CMAKE_EXPORT_COMPILE_COMMANDS ON )
 
 include(cmake/prelude.cmake)
 
@@ -36,6 +37,12 @@ target_include_directories(
 )
 
 target_compile_features(cppless_cppless INTERFACE cxx_std_20)
+
+find_package(nlohmann_json REQUIRED)
+target_link_libraries(cppless_cppless INTERFACE nlohmann_json::nlohmann_json)
+
+find_package(cereal REQUIRED)
+target_link_libraries(cppless_cppless INTERFACE cereal::cereal)
 
 # ---- Install rules ----
 

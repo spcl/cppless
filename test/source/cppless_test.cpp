@@ -1,6 +1,8 @@
 #include "cppless/cppless.hpp"
 
+#include <boost/ut.hpp>
+
 auto main() -> int
 {
-  return std::string("cppless") == "cppless" ? 0 : 1;
+  boost::ut::expect(true);
 }
