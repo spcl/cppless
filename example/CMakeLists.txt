@@ -24,6 +24,8 @@ function(add_example NAME)
 
 endfunction()
 
+add_example(dispatcher_example)
+add_example(identifier_example)
 add_example(simple_example)
 
 add_folders(Example)

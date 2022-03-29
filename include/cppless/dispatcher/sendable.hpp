@@ -9,6 +9,7 @@
 #include <cereal/archives/json.hpp>
 #include <cereal/cereal.hpp>
 #include <cppless/cconv/cereal.hpp>
+#include <cppless/detail/deduction.hpp>
 #include <cppless/utils/fixed_string.hpp>
 
 namespace cppless
@@ -34,15 +35,6 @@ inline void serialize_helper(Archive& ar, Lambda& l, const Args&... args)
   }
 }
 
-template<class Archive>
-class sendable_lambda_base
-{
-public:
-  virtual auto serialize(Archive& ar) -> void = 0;
-  virtual auto identifier() -> std::string = 0;
-  virtual ~sendable_lambda_base() = default;
-};
-
 template<class Lambda, class Res, class... Args>
 class receivable_lambda
 {
@@ -51,89 +43,92 @@ public:
   auto serialize(Archive& ar) -> void
   {
     constexpr int capture_count = Lambda::capture_count();
-    serialize_helper<Archive, Lambda, 0, capture_count>(ar, m_lambda);
+    if constexpr (capture_count > 0) {
+      serialize_helper<Archive, Lambda, 0, capture_count>(ar, m_lambda);
+    }
   }
   Lambda m_lambda;
 };
 
-template<class Archive, class Lambda, class Res, class... Args>
-class sendable_lambda : public sendable_lambda_base<Archive>
+template<class Dispatcher>
+struct task
 {
-public:
-  explicit sendable_lambda(const Lambda& l)
-      : m_lambda(l)
-  {
-  }
+  using input_archive = typename Dispatcher::input_archive;
+  using output_archive = typename Dispatcher::output_archive;
 
-  auto serialize(Archive& ar) -> void override
+  class sendable_lambda_base
   {
-    constexpr int capture_count = Lambda::capture_count();
-    serialize_helper<Archive, Lambda, 0, capture_count>(ar, m_lambda);
-  }
+  public:
+    virtual auto serialize(output_archive& ar) -> void = 0;
+    virtual auto identifier() -> std::string = 0;
+    virtual ~sendable_lambda_base() = default;
+  };
 
-  auto identifier() -> std::string override
+  template<class Lambda, class Res, class... Args>
+  class sendable_lambda : public sendable_lambda_base
   {
-    return function_identifier<Lambda, Args...>().str();
-  }
-
-  __attribute((entry))
-  __attribute((meta(function_identifier<Lambda, Args...>()))) static auto
-  main(int /*argc*/, char* /*argv*/[]) -> int
-  {
-    using recv = receivable_lambda<Lambda, Res, Args...>;
-    union uninitialized_recv
+  public:
+    explicit sendable_lambda(const Lambda& l)
+        : m_lambda(l)
     {
-      recv m_self;
-      std::aligned_storage_t<sizeof(recv), alignof(recv)> m_data;
-      // Constructor
-      uninitialized_recv()
-          : m_data {}
-      {
+    }
+
+    auto serialize(output_archive& ar) -> void override
+    {
+      constexpr int capture_count = Lambda::capture_count();
+      if constexpr (capture_count > 0) {
+        serialize_helper<output_archive, Lambda, 0, capture_count>(ar,
+                                                                   m_lambda);
       }
-      // Destructor
-      ~uninitialized_recv()
-      {
-        m_self.~recv();
-      }
-    };
-    cereal::JSONInputArchive iar(std::cin);
-    uninitialized_recv u;
-    std::tuple<Args...> s_args;
-    task_data<recv, Args...> t_data {u.m_self, s_args};
-    iar(t_data);
-    Res res = std::apply(u.m_self.m_lambda, s_args);
-    cereal::JSONOutputArchive oar(std::cout);
-    oar(res);
+    }
 
-    return 0;
-  }
+    auto identifier() -> std::string override
+    {
+      return function_identifier<Lambda, Args...>().str();
+    }
 
-  Lambda m_lambda;
-};
+    __attribute((entry))
+    __attribute((meta(function_identifier<Lambda, Args...>()))) static auto
+    main(int argc, char* argv[]) -> int
+    {
+      return Dispatcher::template main<Lambda, Res, Args...>(argc, argv);
+    }
 
-template<class Archive, class Res, class... Args>
-class sendable_task
-{
-public:
-  template<class Lambda>
-  sendable_task(const Lambda& l)
-      : m_base(
-          std::make_unique<sendable_lambda<Archive, Lambda, Res, Args...>>(l))
+    Lambda m_lambda;
+  };
+
+  template<class T>
+  class sendable;
+
+  template<class Res, class... Args>
+  class sendable<Res(Args...)>
   {
-  }
+  public:
+    using args = std::tuple<Args...>;
+    using res = Res;
 
-  inline void serialize(Archive& ar)
-  {
-    m_base->serialize(ar);
-  }
+    template<class Lambda>
+    sendable(const Lambda& l)
+        : m_base(std::make_unique<sendable_lambda<Lambda, Res, Args...>>(l))
+    {
+    }
 
-  [[nodiscard]] auto identifier() const -> std::string
-  {
-    return m_base->identifier();
-  }
+    inline void serialize(output_archive& ar)
+    {
+      m_base->serialize(ar);
+    }
 
-private:
-  std::unique_ptr<sendable_lambda_base<Archive>> m_base;
+    [[nodiscard]] auto identifier() const -> std::string
+    {
+      return m_base->identifier();
+    }
+
+  private:
+    std::unique_ptr<sendable_lambda_base> m_base;
+  };
+
+  template<class F, class Op = decltype(&F::operator())>
+  sendable(F) -> sendable<cppless::detail::deduce_function_t<Op>>;
 };
 
 }  // namespace cppless

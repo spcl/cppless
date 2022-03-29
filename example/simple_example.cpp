@@ -1,23 +1,35 @@
 #include <future>
+#include <memory>
 #include <string>
+#include <tuple>
 #include <vector>
 
+#include <cereal/archives/binary.hpp>
 #include <cereal/archives/json.hpp>
 #include <cppless/dispatcher/local.hpp>
-#include <cppless/dispatcher/sendable.hpp>
+#include <cppless/graph/execution.hpp>
+#include <cppless/graph/executor.hpp>
+
+using dispatcher =
+    cppless::dispatchers::local_dispatcher<cereal::JSONInputArchive,
+                                           cereal::JSONOutputArchive>;
+using task = dispatcher::task;
+template<class T>
+using node = cppless::executor::node<dispatcher, T>;
 
 __attribute((weak)) auto main(int argc, char* argv[]) -> int
 {
   std::vector<std::string> args {argv, argv + argc};
-  cppless::dispatchers::local_dispatcher dispatcher {args[0]};
-  using ar = cereal::JSONOutputArchive;
+  auto local = std::make_shared<dispatcher>(args[0]);
+  cppless::executor::executor<dispatcher> exec {local};
 
-  int a = 12;
-  double b = 43;
+  using cppless::execution::schedule, cppless::execution::then;
 
-  cppless::sendable_task<ar, int, int> s_task {
-      [=](int x) { return static_cast<int>(a + b + x + 3); }};
-  std::future<int> f = dispatcher.make_call<int, int>(s_task, 1);
+  auto e = schedule(exec, []() { return 2; });
+  auto q = schedule(exec, []() { return 3; });
+  auto sum = then(e, q, [](int x, int y) { return x + y; });
 
-  std::cout << f.get() << std::endl;
+  exec.await_all();
+
+  std::cout << "Result: " << sum->get_result() << std::endl;
 }

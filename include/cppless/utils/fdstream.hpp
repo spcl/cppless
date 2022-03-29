@@ -18,6 +18,7 @@ namespace cppless
  * This software is provided "as is" without express or implied
  * warranty, and with no claim as to its suitability for any purpose.
  */
+
 class fdoutbuf : public std::streambuf
 {
 protected:
@@ -49,6 +50,9 @@ protected:
   }
 };
 
+/**
+ * @brief A stream which writes to a file descriptor
+ */
 class fdostream : public std::ostream
 {
 protected:
@@ -133,7 +137,9 @@ protected:
     return traits_type::to_int_type(*gptr());
   }
 };
-
+/**
+ * @brief A stream which reads from a file descriptor
+ */
 class fdistream : public std::istream
 {
 protected:
