@@ -1,5 +1,6 @@
 #pragma once
 
+#include <chrono>
 #include <functional>
 #include <iostream>
 #include <memory>
@@ -7,6 +8,7 @@
 #include <stdexcept>
 #include <tuple>
 #include <unordered_map>
+#include <unordered_set>
 #include <utility>
 #include <vector>
 
@@ -65,12 +67,21 @@ class node_core : public basic_node_core
 public:
   using dispatcher = Dispatcher;
 
-  explicit node_core(size_t id)
+  explicit node_core(size_t id,
+                     std::weak_ptr<executor_core<Dispatcher>> executor)
       : basic_node_core(id)
+      , m_executor(std::move(executor))
   {
   }
 
   virtual auto run(typename Dispatcher::instance& dispatcher) -> int = 0;
+  auto get_executor() -> std::shared_ptr<executor_core<Dispatcher>>
+  {
+    return m_executor.lock();
+  }
+
+private:
+  std::weak_ptr<executor_core<Dispatcher>> m_executor;
 };
 
 template<class Arg>
@@ -84,12 +95,12 @@ public:
   {
   }
 
-  auto is_connected() -> bool
+  [[nodiscard]] auto is_connected() const -> bool
   {
     return m_is_connected;
   }
 
-  auto is_ready() -> bool
+  [[nodiscard]] auto is_ready() const -> bool
   {
     return m_arg.has_value();
   }
@@ -104,7 +115,7 @@ public:
     m_arg = std::move(arg);
   }
 
-  auto get_owning_node_id() -> size_t
+  [[nodiscard]] auto get_owning_node_id() const -> size_t
   {
     return m_owning_node_id;
   }
@@ -115,8 +126,46 @@ private:
   size_t m_owning_node_id = 0UL;
 };
 
+template<>
+class receiver_slot<void>
+{
+public:
+  using arg_type = void;
+
+  explicit receiver_slot(size_t owning_node_id)
+      : m_owning_node_id(owning_node_id)
+  {
+  }
+
+  [[nodiscard]] auto is_connected() const -> bool
+  {
+    return m_is_connected;
+  }
+
+  [[nodiscard]] auto is_ready() const -> bool
+  {
+    return m_is_ready;
+  }
+
+  auto set_value() -> void
+  {
+    m_is_ready = true;
+  }
+
+  [[nodiscard]] auto get_owning_node_id() const -> size_t
+  {
+    return m_owning_node_id;
+  }
+
+private:
+  bool m_is_ready = false;
+  bool m_is_connected = false;
+  size_t m_owning_node_id = 0UL;
+};
+
 template<class Dispatcher, class... Args>
 class receiver;
+
 template<class Dispatcher, class... Args>
 class receiver<Dispatcher, std::tuple<Args...>>
     : virtual public node_core<Dispatcher>
@@ -160,24 +209,30 @@ public:
                      });
   }
 
-  auto create_empty_slot() -> std::shared_ptr<receiver_slot<cppless::empty>>
+  auto create_empty_slot() -> std::shared_ptr<receiver_slot<void>>
   {
-    auto slot = std::make_shared<receiver_slot<cppless::empty>>();
+    auto slot = std::make_shared<receiver_slot<void>>(this->get_id());
+    m_empty_slots.push_back(slot);
+    return slot;
   }
 
-protected:
+private:
   std::tuple<std::shared_ptr<receiver_slot<Args>>...> m_slots {};
-  std::vector<std::shared_ptr<receiver_slot<cppless::empty>>> m_empty_slots {};
+  std::vector<std::shared_ptr<receiver_slot<void>>> m_empty_slots {};
 };
 
 template<class Dispatcher, class Res>
 class sender : virtual public node_core<Dispatcher>
 {
 public:
+  using dispatcher = Dispatcher;
+  using sending_type = Res;
+
   auto add_successor(std::shared_ptr<receiver_slot<Res>> successor) -> void
   {
     m_successors.push_back(successor);
   }
+
   auto get_successors() -> std::vector<std::shared_ptr<receiver_slot<Res>>>&
   {
     return m_successors;
@@ -198,6 +253,32 @@ private:
   std::vector<std::shared_ptr<receiver_slot<Res>>> m_successors {};
 };
 
+// Specialization for void
+template<class Dispatcher>
+class sender<Dispatcher, void> : virtual public node_core<Dispatcher>
+{
+public:
+  using dispatcher = Dispatcher;
+  using sending_type = void;
+
+  auto add_successor(const std::shared_ptr<receiver_slot<void>>& successor)
+      -> void
+  {
+    m_successors.push_back(successor);
+  }
+
+  auto get_successors() -> std::vector<std::shared_ptr<receiver_slot<void>>>&
+  {
+    return m_successors;
+  }
+
+private:
+  std::vector<std::shared_ptr<receiver_slot<void>>> m_successors {};
+};
+
+template<class Dispatcher, class Res>
+using shared_sender = std::shared_ptr<sender<Dispatcher, Res>>;
+
 template<class Dispatcher, class Task>
 class node
     : virtual public node_core<Dispatcher>
@@ -208,13 +289,14 @@ public:
   using task = Task;
   using args = typename task::args;
   using res = typename task::res;
+  using dispatcher = Dispatcher;
+  using sending_type = typename task::res;
 
   node(size_t id, std::weak_ptr<executor_core<Dispatcher>> executor, Task& task)
-      : node_core<Dispatcher>(id)
+      : node_core<Dispatcher>(id, std::move(executor))
       , receiver<Dispatcher, args>(id)
       , sender<Dispatcher, res>()
       , m_task(std::move(task))
-      , m_executor(std::move(executor))
   {
   }
 
@@ -238,25 +320,55 @@ public:
   auto propagate_value() -> void override
   {
     res& res_value = this->get_result();
-    if (std::shared_ptr<executor_core<Dispatcher>> executor = m_executor.lock())
-    {
-      for (auto& successor : sender<Dispatcher, res>::get_successors()) {
-        successor->set_value(res_value);
-        executor->notify(successor->get_owning_node_id());
-      }
-    } else {
-      throw std::runtime_error("executor is already freed");
+    std::shared_ptr<executor_core<Dispatcher>> executor = this->get_executor();
+    for (auto& successor : sender<Dispatcher, res>::get_successors()) {
+      successor->set_value(res_value);
+      executor->notify(successor->get_owning_node_id());
     }
-  }
-
-  auto get_executor() -> std::shared_ptr<executor_core<Dispatcher>>
-  {
-    return m_executor.lock();
   }
 
 private:
   Task m_task;
-  std::weak_ptr<executor_core<Dispatcher>> m_executor;
+};
+
+template<class Dispatcher>
+class source_node
+    : virtual public node_core<Dispatcher>
+    , public sender<Dispatcher, void>
+{
+public:
+  using res = void;
+  using dispatcher = Dispatcher;
+  using sending_type = void;
+
+  source_node(size_t id, std::weak_ptr<executor_core<Dispatcher>> executor)
+      : node_core<Dispatcher>(id, std::move(executor))
+      , sender<Dispatcher, res>()
+
+  {
+  }
+
+  auto run(typename Dispatcher::instance& /*dispatcher*/) -> int override
+  {
+    return -1;
+  }
+  auto successors() -> std::vector<std::shared_ptr<basic_node_core>> override
+  {
+    throw std::runtime_error("not yet implemented");
+  }
+  auto is_ready() -> bool override
+  {
+    return true;
+  }
+
+  auto propagate_value() -> void override
+  {
+    std::shared_ptr<executor_core<Dispatcher>> executor = this->get_executor();
+    for (auto& successor : sender<Dispatcher, res>::get_successors()) {
+      successor->set_value();
+      executor->notify(successor->get_owning_node_id());
+    }
+  }
 };
 
 template<class Dispatcher>
@@ -281,6 +393,15 @@ public:
     return new_node;
   }
 
+  auto create_source_node() -> std::shared_ptr<source_node<Dispatcher>>
+  {
+    int next_id = static_cast<int>(m_nodes.size());
+    auto self = this->shared_from_this();
+    auto new_node = std::make_shared<source_node<Dispatcher>>(next_id, self);
+    m_nodes.push_back(new_node);
+    return new_node;
+  }
+
   auto get_node(int id) -> std::shared_ptr<node_core<Dispatcher>>
   {
     return m_nodes[id];
@@ -288,6 +409,11 @@ public:
 
   auto await_all() -> void
   {
+    auto start = std::chrono::high_resolution_clock::now();
+
+    std::unordered_set<size_t> running_nodes;
+    int finished_nodes = 0;
+
     // Populate the m_ready_nodes vector with all nodes that don't have any
     // dependencies
     for (auto& node : m_nodes) {
@@ -302,17 +428,36 @@ public:
         auto node = m_nodes[node_id];
         m_ready_nodes.pop_back();
         int future_id = node->run(m_instance);
-        m_future_node_map[future_id] = node->get_id();
+        if (future_id == -1) {
+          m_finished_nodes++;
+          finished_nodes++;
+          node->propagate_value();
+        } else {
+          running_nodes.insert(node_id);
+          m_future_node_map[future_id] = node->get_id();
+        }
+      }
+
+      if (running_nodes.empty()) {
+        break;
       }
 
       int finished = m_instance.wait_one();
-      // Get the node that finished
-      auto node = m_nodes[m_future_node_map[finished]];
+      size_t finished_node_id = m_future_node_map[finished];
+      auto node = m_nodes[finished_node_id];
       m_finished_nodes++;
+      finished_nodes++;
+      running_nodes.erase(node->get_id());
       // Propagate the value
       node->propagate_value();
       // This also adds the node to the ready nodes
-    } while (m_finished_nodes != m_nodes.size());
+    } while (true);
+
+    auto end = std::chrono::high_resolution_clock::now();
+    auto duration =
+        std::chrono::duration_cast<std::chrono::milliseconds>(end - start);
+    std::cout << "[executor] Executed " << finished_nodes << " tasks in "
+              << duration.count() << "ms" << std::endl;
   }
 
   auto notify(size_t id) -> void
@@ -354,6 +499,12 @@ public:
   {
     return m_core->create_node(task);
   }
+
+  auto create_source_node() -> std::shared_ptr<source_node<Dispatcher>>
+  {
+    return m_core->create_source_node();
+  }
+
   auto await_all() -> void
   {
     m_core->await_all();

@@ -4,7 +4,7 @@ namespace cppless
 {
 
 template<class Tuple, std::size_t... Is>
-auto rotate_tuple_impl(Tuple t, std::index_sequence<Is...>)
+auto rotate_tuple_impl(Tuple t, std::index_sequence<Is...> /*unused*/)
 {
   constexpr auto length = std::tuple_size<Tuple>();
   return std::make_tuple(std::get<length - 1>(t), std::get<Is>(t)...);
@@ -17,7 +17,7 @@ auto rotate_tuple(std::tuple<Args...> t)
 }
 
 template<class B, class Tuple, std::size_t... Is>
-auto apply_impl(B b, Tuple t, std::index_sequence<Is...>)
+auto apply_impl(B b, Tuple t, std::index_sequence<Is...> /*unused*/)
 {
   return b(std::get<Is>(t)...);
 }

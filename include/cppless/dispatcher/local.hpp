@@ -205,7 +205,7 @@ public:
     }
 
     /**
-     * @brief Dispatches a task for exeecution
+     * @brief Dispatches a task for execution
      *
      * @tparam Res - The return type of the task
      * @tparam Args - The types of the arguments of the task
@@ -234,7 +234,6 @@ public:
         std::lock_guard<std::mutex> lock(m_mutex);
         copy.set_value(std::move(result));
         m_finished.push_back(id);
-        std::cout << "[local] finished " << id << std::endl;
         m_cv.notify_one();
       };
 
@@ -245,7 +244,6 @@ public:
                 location, data, std::move(cb));
         m_threads.push_back(std::move(thread));
       }
-      std::cout << "[local] dispatched " << id << std::endl;
       return {id, future};
     }
 
