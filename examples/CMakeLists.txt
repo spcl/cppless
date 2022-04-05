@@ -20,12 +20,13 @@ function(add_example NAME)
   target_compile_features("${NAME}" PRIVATE cxx_std_20)
   add_custom_target("run_${NAME}" COMMAND "./${NAME}" VERBATIM)
   add_dependencies("run_${NAME}" "${NAME}")
-  add_dependencies(run-examples "run_${NAME}")
 
+  add_dependencies(run-examples "run_${NAME}")
 endfunction()
 
 add_example(dispatcher_example)
 add_example(identifier_example)
+add_example(http_example)
 add_example(simple_example)
 
 add_folders(Example)

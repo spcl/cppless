@@ -132,7 +132,7 @@ public:
        * unarchiving of the lambda restores all internal fields
        */
       uninitialized_recv()
-          : m_data {}
+          : m_data()
       {
       }
       /**
@@ -284,12 +284,12 @@ public:
      * The ids of task invocations which finished. `m_cv` should be
      * notified when changes were made. A lock on `m_mutex` is required.
      */
-    std::vector<int> m_finished = {};
+    std::vector<int> m_finished;
     /**
      * List of threads spawned by this instance. The destructor will ensure that
      * all threads are joined when the instance goes out of scope.
      */
-    std::vector<std::thread> m_threads = {};
+    std::vector<std::thread> m_threads;
     local_dispatcher<input_archive, output_archive>& m_dispatcher;
   };
 

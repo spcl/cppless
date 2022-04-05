@@ -12,10 +12,12 @@
 #include <utility>
 #include <vector>
 
+#include <boost/graph/adjacency_list.hpp>
+#include <boost/graph/detail/adjacency_list.hpp>
+#include <boost/graph/graphviz.hpp>
+#include <cppless/dispatcher/common.hpp>
 #include <cppless/utils/empty.hpp>
 #include <cppless/utils/tuple.hpp>
-
-#include "cppless/dispatcher/common.hpp"
 
 namespace cppless::executor
 {
@@ -30,8 +32,7 @@ public:
   {
   }
   virtual ~basic_node_core() = default;
-  virtual auto successors()
-      -> std::vector<std::shared_ptr<basic_node_core>> = 0;
+  virtual auto get_successor_ids() -> std::vector<size_t> = 0;
   virtual auto is_ready() -> bool = 0;
   virtual auto propagate_value() -> void = 0;
 
@@ -172,8 +173,8 @@ class receiver<Dispatcher, std::tuple<Args...>>
 {
 public:
   explicit receiver(size_t id)
-      : m_slots({})
-      , m_empty_slots({})
+      : m_slots()
+
   {
     fill_tuple(m_slots,
                [id]<class T>(std::shared_ptr<receiver_slot<T>>& slot)
@@ -217,8 +218,8 @@ public:
   }
 
 private:
-  std::tuple<std::shared_ptr<receiver_slot<Args>>...> m_slots {};
-  std::vector<std::shared_ptr<receiver_slot<void>>> m_empty_slots {};
+  std::tuple<std::shared_ptr<receiver_slot<Args>>...> m_slots;
+  std::vector<std::shared_ptr<receiver_slot<void>>> m_empty_slots;
 };
 
 template<class Dispatcher, class Res>
@@ -308,9 +309,14 @@ public:
     this->set_future(id_fut);
     return id_fut.get_id();
   }
-  auto successors() -> std::vector<std::shared_ptr<basic_node_core>> override
+  auto get_successor_ids() -> std::vector<size_t> override
   {
-    throw std::runtime_error("not yet implemented");
+    std::vector<size_t> res;
+    std::transform(this->get_successors().begin(),
+                   this->get_successors().end(),
+                   std::back_inserter(res),
+                   [](const auto& slot) { return slot->get_owning_node_id(); });
+    return res;
   }
   auto is_ready() -> bool override
   {
@@ -352,9 +358,14 @@ public:
   {
     return -1;
   }
-  auto successors() -> std::vector<std::shared_ptr<basic_node_core>> override
+  auto get_successor_ids() -> std::vector<size_t> override
   {
-    throw std::runtime_error("not yet implemented");
+    std::vector<size_t> res;
+    std::transform(this->get_successors().begin(),
+                   this->get_successors().end(),
+                   std::back_inserter(res),
+                   [](const auto& slot) { return slot->get_owning_node_id(); });
+    return res;
   }
   auto is_ready() -> bool override
   {
@@ -468,6 +479,22 @@ public:
     if (node->get_dependency_count() == 0) {
       m_ready_nodes.push_back(node->get_id());
     }
+  }
+
+  auto write_graphviz(std::ostream& out)
+  {
+    using digraph = boost::adjacency_list<
+        boost::vecS,
+        boost::vecS,
+        boost::directedS,
+        boost::property<boost::vertex_name_t, std::string>>;
+    digraph d(m_nodes.size());
+    for (auto& node : m_nodes) {
+      for (auto& successor : node->get_successor_ids()) {
+        boost::add_edge(node->get_id(), successor, d);
+      }
+    }
+    boost::write_graphviz(out, d);
   }
 
 private:

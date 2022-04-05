@@ -79,7 +79,7 @@ auto then_connect(
     std::shared_ptr<FirstSenderType> head,
     std::shared_ptr<RestSenderTypes>... tail) -> void
 {
-  if constexpr (std::is_void<typename FirstSenderType::sending_type> {}) {
+  if constexpr (std::is_void<typename FirstSenderType::sending_type>()) {
     connect_empty(head, input_node);
     if constexpr (sizeof...(tail) > 0) {
       then_connect<I, Dispatcher, InputTask, RestSenderTypes...>(input_node,

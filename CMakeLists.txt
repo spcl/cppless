@@ -44,6 +44,12 @@ target_link_libraries(cppless_cppless INTERFACE nlohmann_json::nlohmann_json)
 find_package(cereal REQUIRED)
 target_link_libraries(cppless_cppless INTERFACE cereal::cereal)
 
+find_package(libnghttp2 REQUIRED)
+target_link_libraries(cppless_cppless INTERFACE libnghttp2::libnghttp2)
+
+# ---- Tools ----
+add_subdirectory(tools)
+
 # ---- Install rules ----
 
 if(NOT CMAKE_SKIP_INSTALL_RULES)
@@ -55,7 +61,7 @@ endif()
 if(PROJECT_IS_TOP_LEVEL)
   option(BUILD_EXAMPLES "Build examples tree." "${cppless_DEVELOPER_MODE}")
   if(BUILD_EXAMPLES)
-    add_subdirectory(example)
+    add_subdirectory(examples)
   endif()
 endif()
 
