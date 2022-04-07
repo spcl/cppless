@@ -1,1 +1,1 @@
-add_subdirectory(cppless-server)
+add_subdirectory(cppless_server)

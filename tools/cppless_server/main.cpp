@@ -14,6 +14,7 @@
 #include <boost/uuid/uuid_io.hpp>
 #include <nghttp2/asio_http2.h>
 #include <nghttp2/asio_http2_server.h>
+#include <sys/stat.h>
 
 const int status_ok = 200;
 const int status_not_found = 404;
@@ -60,12 +61,6 @@ public:
   auto write_stream() -> std::ofstream&
   {
     return m_stream;
-  }
-
-  auto read_stream() -> std::unique_ptr<std::ifstream>
-  {
-    auto stream = std::make_unique<std::ifstream>(m_path, std::ios::binary);
-    return stream;
   }
 
   auto path() const -> const std::filesystem::path&
@@ -150,6 +145,7 @@ public:
   }
   void operator()(const uint8_t* data, size_t len)
   {
+    std::cout << "Wrote: " << len << std::endl;
     if (len == 0) {
       m_cb();
       return;
@@ -160,37 +156,6 @@ public:
 
 private:
   std::ostream& m_os;
-  EOFCallback m_cb;
-};
-
-template<class EOFCallback>
-class istream_cb
-{
-public:
-  explicit istream_cb(std::istream& is, EOFCallback cb)
-      : m_is(is)
-      , m_cb(cb)
-  {
-  }
-
-  auto operator()(uint8_t* data, size_t len, uint32_t* data_flags)
-      -> nghttp2::asio_http2::generator_cb::result_type
-  {
-    std::streamsize n = m_is.readsome(reinterpret_cast<char*>(data),  // NOLINT
-                                      static_cast<std::streamsize>(len));
-    if (n == -1) {
-      return NGHTTP2_ERR_TEMPORAL_CALLBACK_FAILURE;
-    }
-
-    if (n == 0) {
-      *data_flags |= NGHTTP2_DATA_FLAG_EOF;
-    }
-
-    return n;
-  }
-
-private:
-  std::istream& m_is;
   EOFCallback m_cb;
 };
 
@@ -359,12 +324,13 @@ auto main(int /*argc*/, char* /*argv*/[]) -> int
   {
     if (req.method() == "POST") {
       auto file = files.create_file();
-
       auto eof_cb = [&, file]()
       {
         res.write_head(status_ok);
         res.end(boost::uuids::to_string(file->uuid()));
         file->write_stream() << std::flush;
+
+        chmod(file->path(), );
       };
       ostream_cb cb(file->write_stream(), eof_cb);
       req.on_data(cb);
@@ -376,14 +342,23 @@ auto main(int /*argc*/, char* /*argv*/[]) -> int
   };
   r.add_handler("/functions/", fn_collection_cb);
 
-  auto fn_element_cb = [](const request& req,
-                          const response& res,
-                          const std::vector<std::string>& dynamic_segments)
+  auto fn_element_cb =
+      [&files](const request& req,
+               const response& res,
+               const std::vector<std::string>& dynamic_segments)
   {
     if (req.method() == "GET") {
-      res.write_head(status_ok);
-      res.end(dynamic_segments[0]);
-
+      auto id = dynamic_segments[0];
+      boost::uuids::string_generator gen;
+      auto uuid = gen(id);
+      auto file = files.find_file(uuid);
+      if (file) {
+        res.write_head(status_ok);
+        res.end(nghttp2::asio_http2::file_generator(file->path()));
+      } else {
+        res.write_head(status_not_found);
+        res.end("Not Found");
+      }
     } else {
       res.write_head(status_method_not_allowed, {{"Allow", {"GET", false}}});
       res.end();

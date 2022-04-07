@@ -22,8 +22,8 @@ __attribute((weak)) auto main(int argc, char* argv[]) -> int
 
     int a = -1;
 
-    task::sendable t0 = [=]() { return 3; };
-    task::sendable t1 = [=]() { return 1; };
+    task::sendable t0 = [=]() { return a + 3; };
+    task::sendable t1 = [=]() { return 1 - a; };
     auto f0 = instance.dispatch(t0, std::make_tuple());
     auto f1 = instance.dispatch(t1, std::make_tuple());
 
