@@ -33,9 +33,9 @@ public:
   // Delete copy assignment operator
   auto operator=(const future&) -> future& = delete;
 
-  auto set_value(Res&& res) -> void
+  auto set_value(const Res& res) -> void
   {
-    m_res = std::move(res);
+    m_res = res;
   }
 
   auto get_value() -> Res&
@@ -80,9 +80,9 @@ public:
     return *this;
   }
 
-  auto set_value(Res&& res) -> void
+  auto set_value(const Res& res) -> void
   {
-    m_future->set_value(std::forward<Res>(res));
+    m_future->set_value(res);
   }
 
   auto get_value() -> Res&

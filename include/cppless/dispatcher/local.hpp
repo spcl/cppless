@@ -232,7 +232,7 @@ public:
       {
         cppless::shared_future<Res> copy(future);
         std::lock_guard<std::mutex> lock(m_mutex);
-        copy.set_value(std::move(result));
+        copy.set_value(result);
         m_finished.push_back(id);
         m_cv.notify_one();
       };

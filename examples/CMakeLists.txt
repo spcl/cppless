@@ -32,3 +32,5 @@ add_example(http_example)
 add_example(simple_example)
 
 add_folders(Example)
+
+add_subdirectory(lto_example)
