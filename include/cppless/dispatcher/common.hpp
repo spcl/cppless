@@ -14,6 +14,7 @@
 
 #include <cppless/utils/fdstream.hpp>
 #include <unistd.h>
+#include <sys/wait.h>
 
 namespace cppless
 {

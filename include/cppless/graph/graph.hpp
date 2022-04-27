@@ -1,16 +1,67 @@
 #pragma once
 #include <algorithm>
+#include <chrono>
 #include <memory>
 #include <optional>
+#include <string_view>
+#include <unordered_map>
 
 #include <boost/graph/adjacency_list.hpp>
 #include <boost/graph/detail/adjacency_list.hpp>
 #include <boost/graph/graphviz.hpp>
 #include <cppless/dispatcher/common.hpp>
+#include <cppless/utils/json.hpp>
 #include <cppless/utils/tuple.hpp>
+#include <nlohmann/json.hpp>
 
 namespace cppless::graph
 {
+
+class tracing_span
+{
+public:
+  explicit tracing_span(std::string_view operation_name)
+      : m_operation_name(operation_name)
+  {
+    m_start_time = std::chrono::high_resolution_clock::now();
+  }
+
+  auto end() -> void
+  {
+    m_end_time = std::chrono::high_resolution_clock::now();
+  }
+
+  auto add_tag(std::string_view key, std::string value) -> void
+  {
+    m_tags.emplace(key, value);
+  }
+
+  [[nodiscard]] auto get_operation_name() const -> const std::string_view&
+  {
+    return m_operation_name;
+  }
+  [[nodiscard]] auto get_start_time() const
+      -> const std::chrono::high_resolution_clock::time_point&
+  {
+    return m_start_time;
+  }
+  [[nodiscard]] auto get_end_time() const
+      -> const std::chrono::high_resolution_clock::time_point&
+  {
+    return m_end_time;
+  }
+  [[nodiscard]] auto get_tags() const
+      -> const std::unordered_map<std::string_view, std::string>&
+  {
+    return m_tags;
+  }
+
+private:
+  std::string_view m_operation_name;
+  std::chrono::high_resolution_clock::time_point m_start_time;
+  std::chrono::high_resolution_clock::time_point m_end_time;
+  std::unordered_map<std::string_view, std::string> m_tags;
+};
 
 template<class Executor>
 class builder_core;
@@ -32,8 +83,19 @@ public:
   basic_node_core(const basic_node_core&) = delete;
   basic_node_core(basic_node_core&&) = delete;
 
-  basic_node_core& operator=(const basic_node_core&) = delete;
-  basic_node_core& operator=(basic_node_core&&) = delete;
+  auto operator=(const basic_node_core&) -> basic_node_core& = delete;
+  auto operator=(basic_node_core&&) -> basic_node_core& = delete;
+
+  auto add_tracing_span(const tracing_span& span) -> void
+  {
+    m_tracing_spans.push_back(span);
+  }
+
+  [[nodiscard]] auto get_tracing_spans() const
+      -> const std::vector<tracing_span>&
+  {
+    return m_tracing_spans;
+  }
 
   virtual auto get_successor_ids() -> std::vector<std::size_t> = 0;
 
@@ -51,6 +113,7 @@ public:
 private:
   std::size_t m_id;
   std::weak_ptr<builder_core<Executor>> m_builder;
+  std::vector<tracing_span> m_tracing_spans;
 };
 
 template<class Executor>
@@ -372,6 +435,11 @@ public:
     return m_nodes;
   }
 
+  auto get_executor() -> std::shared_ptr<Executor>&
+  {
+    return m_executor;
+  }
+
   auto get_node(std::size_t id) -> std::shared_ptr<node_core<Executor>>
   {
     return m_nodes[id];
@@ -398,15 +466,42 @@ public:
     m_executor->await_all();
   }
 
-  auto get_executor() -> std::shared_ptr<Executor>
-  {
-    return m_executor;
-  }
-
 private:
   std::vector<std::shared_ptr<node_core<Executor>>> m_nodes {};
   std::shared_ptr<Executor> m_executor;
 };
+
+// Serializer for tracing_span
+inline void to_json(nlohmann::json& j, const tracing_span& span)
+{
+  j = nlohmann::json {
+      {"name", span.get_operation_name()},
+      {"start_time", span.get_start_time()},
+      {"end_time", span.get_end_time()},
+      {"tags", span.get_tags()},
+  };
+}
+
+// Serializer for std::shared_ptr<node_core<Executor>>
+template<class Executor>
+inline void to_json(nlohmann::json& j,
+                    const std::shared_ptr<node_core<Executor>>& node)
+{
+  j = nlohmann::json {
+      {"id", node->get_id()},
+      {"successors", node->get_successor_ids()},
+      {"tracing_spans", node->get_tracing_spans()},
+  };
+}
+
+template<class Executor>
+inline void to_json(nlohmann::json& j,
+                    const std::shared_ptr<builder_core<Executor>>& b)
+{
+  j = nlohmann::json {
+      {"nodes", b->get_nodes()},
+  };
+}
 
 template<class Executor>
 class builder

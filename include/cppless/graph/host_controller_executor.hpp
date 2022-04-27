@@ -124,14 +124,9 @@ public:
     {
     }
 
-    auto set_future(cppless::identified_shared_future<Res>& future) -> void
-    {
-      m_result = future;
-    }
-
     auto get_result() -> Res&
     {
-      return m_result.value().get_value();
+      return m_future.get_value();
     }
 
     auto get_future() -> cppless::shared_future<Res>&
@@ -141,7 +136,6 @@ public:
 
   private:
     cppless::shared_future<Res> m_future;
-    std::optional<cppless::identified_shared_future<Res>> m_result;
   };
 
   template<>
@@ -179,15 +173,16 @@ public:
     auto run(typename Dispatcher::instance& dispatcher) -> int override
     {
       typename Task::args arg_values = this->get_args();
-      cppless::identified_shared_future<typename Task::res> id_fut =
-          dispatcher.dispatch(this->get_task(), arg_values);
-      this->set_future(id_fut);
-      return id_fut.get_id();
+      cppless::graph::tracing_span dispatch_span {"dispatch"};
+      int fut_id =
+          dispatcher.dispatch(this->get_task(), this->get_future(), arg_values);
+      dispatch_span.end();
+      this->add_tracing_span(dispatch_span);
+      return fut_id;
     }
     auto propagate_value() -> void override
     {
       typename Task::res& res_value = this->get_result();
-      this->get_future().set_value(res_value);
       std::shared_ptr<graph::builder_core<host_controller_executor<Dispatcher>>>
           builder = this->get_builder();
       std::shared_ptr<executor_type> exec = builder->get_executor();
@@ -251,13 +246,14 @@ public:
 
     auto start = std::chrono::high_resolution_clock::now();
 
-    std::unordered_set<size_t> running_nodes;
+    std::unordered_set<std::size_t> running_nodes;
+
+    std::unordered_map<std::size_t, cppless::graph::tracing_span> wait_spans;
     int finished_nodes = 0;
 
     // Populate the m_ready_nodes vector with all nodes that don't have any
     // dependencies
 
-    std::cout << "Ready nodes: " << builder->get_nodes().size() << std::endl;
     for (auto& node : builder->get_nodes()) {
       if (node->get_dependency_count() == 0) {
         m_ready_nodes.push_back(node->get_id());
@@ -271,9 +267,20 @@ public:
         auto node = builder->get_node(node_id);
         m_ready_nodes.pop_back();
         int future_id = node->run(m_instance);
+
+        wait_spans.emplace(node_id, "wait");
+
         if (future_id == -1) {
           m_finished_nodes++;
           finished_nodes++;
+
+          auto span_it = wait_spans.find(node_id);
+          if (span_it != wait_spans.end()) {
+            cppless::graph::tracing_span& span = span_it->second;
+            span.end();
+            node->add_tracing_span(span);
+            wait_spans.erase(span_it);
+          }
           node->propagate_value();
         } else {
           running_nodes.insert(node_id);
@@ -288,6 +295,15 @@ public:
       int finished = m_instance.wait_one();
       std::size_t finished_node_id = m_future_node_map[finished];
       auto node = builder->get_node(finished_node_id);
+
+      auto span_it = wait_spans.find(finished_node_id);
+      if (span_it != wait_spans.end()) {
+        cppless::graph::tracing_span& span = span_it->second;
+        span.end();
+        node->add_tracing_span(span);
+        wait_spans.erase(span_it);
+      }
+
       m_finished_nodes++;
       finished_nodes++;
       running_nodes.erase(node->get_id());

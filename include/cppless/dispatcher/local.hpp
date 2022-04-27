@@ -20,7 +20,7 @@
 
 #include "cppless/detail/deduction.hpp"
 
-namespace cppless::dispatchers
+namespace cppless::dispatcher
 {
 using json = nlohmann::json;
 namespace fs = std::filesystem;
@@ -143,6 +143,13 @@ public:
       {
         m_self.~recv();
       }
+
+      // Delete copy and move constructors and assignment operators
+      uninitialized_recv(const uninitialized_recv&) = delete;
+      uninitialized_recv(uninitialized_recv&&) = delete;
+
+      auto operator=(const uninitialized_recv&) -> uninitialized_recv& = delete;
+      auto operator=(uninitialized_recv&&) -> uninitialized_recv& = delete;
     };
     input_archive iar(std::cin);
     uninitialized_recv u;
@@ -210,13 +217,15 @@ public:
      * @tparam Res - The return type of the task
      * @tparam Args - The types of the arguments of the task
      * @param t - The task to be dispatched
+     * @param result_future - The future to which the result of the task should
+     * be written to
      * @param args - The arguments with which the invocation should occur
-     * @return cppless::identified_shared_future<Res> - A future which can be
-     * used to access the result of the task invocation.
+     * @return int - The id of the invocation
      */
     template<class Res, class... Args>
-    auto dispatch(sendable_task<Res(Args...)>& t, std::tuple<Args...> args)
-        -> cppless::identified_shared_future<Res>
+    auto dispatch(sendable_task<Res(Args...)>& t,
+                  cppless::shared_future<Res> result_future,
+                  std::tuple<Args...> args) -> int
     {
       using specialized_task_data =
           task_data<sendable_task<Res(Args...)>, Args...>;
@@ -227,10 +236,9 @@ public:
       specialized_task_data data {t, args};
       std::string location = m_dispatcher.m_function_map[function_name];
       int id = m_next_id++;
-      cppless::shared_future<Res> future;
-      auto cb = [this, future, id](Res result)
+      auto cb = [this, result_future, id](Res result)
       {
-        cppless::shared_future<Res> copy(future);
+        cppless::shared_future<Res> copy(result_future);
         std::lock_guard<std::mutex> lock(m_mutex);
         copy.set_value(result);
         m_finished.push_back(id);
@@ -244,7 +252,7 @@ public:
                 location, data, std::move(cb));
         m_threads.push_back(std::move(thread));
       }
-      return {id, future};
+      return id;
     }
 
     /**
@@ -312,4 +320,4 @@ private:
   std::map<std::string, std::string> m_function_map;
 };
 
-}  // namespace cppless::dispatchers
+}  // namespace cppless::dispatcher

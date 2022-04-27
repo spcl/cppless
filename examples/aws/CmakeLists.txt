@@ -1,0 +1,31 @@
+include(FetchContent)
+project(cpplessExamplesAws LANGUAGES CXX)
+
+fetchContent_MakeAvailable(aws-lambda-cpp)
+set(AWS_LAMBDA_PACKAGING_SCRIPT "${CMAKE_SOURCE_DIR}/tools/packager/packager")
+function(aws_lambda_package_target target)
+    set(options OPTIONAL NO_LIBC)
+    cmake_parse_arguments(PACKAGER "${options}" "" "" ${ARGN})
+    if (${PACKAGER_NO_LIBC})
+        set (PACKAGER_NO_LIBC "-d")
+    else()
+        set (PACKAGER_NO_LIBC "")
+    endif()
+    add_custom_target("aws_lambda_package-${target}"
+        COMMAND ${AWS_LAMBDA_PACKAGING_SCRIPT} ${PACKAGER_NO_LIBC} "--sysroot" ${SYSROOT} "--project" ${CMAKE_BINARY_DIR} "--image" ${DOCKER_IMAGE} $<TARGET_FILE:${target}>
+        DEPENDS ${target})
+endfunction()
+
+function(aws_lambda_target NAME)
+    target_compile_features("${NAME}" PRIVATE "cxx_std_11")
+    target_compile_options("${NAME}" PRIVATE "-Wall" "-Wextra")
+    target_link_libraries("${NAME}" PRIVATE aws-lambda-runtime)
+    target_link_libraries("${NAME}" PRIVATE -static-libgcc -static-libstdc++)
+
+    find_package(CURL REQUIRED)
+    target_link_libraries("${NAME}" PRIVATE CURL::libcurl)
+endfunction()
+
+add_executable(hello_world "hello_world.cpp")
+aws_lambda_target(hello_world)
+aws_lambda_package_target(hello_world)

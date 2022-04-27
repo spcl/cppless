@@ -2,6 +2,7 @@
 #include <cstdio>
 #include <iostream>
 #include <streambuf>
+#include <cstring>
 
 #include <unistd.h>
 
@@ -116,7 +117,7 @@ protected:
     /* copy up to pbSize characters previously read into
      * the putback area
      */
-    memmove(&m_buffer[static_cast<size_t>(pb_size - num_putback)],
+    std::memmove(&m_buffer[static_cast<size_t>(pb_size - num_putback)],
             gptr() - num_putback,
             static_cast<size_t>(num_putback));
 

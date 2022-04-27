@@ -33,4 +33,5 @@ add_example(simple_example)
 
 add_folders(Example)
 
+add_subdirectory(aws)
 add_subdirectory(lto_example)
