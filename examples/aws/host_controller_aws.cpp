@@ -18,6 +18,6 @@ __attribute((entry)) auto alt_entry(int /*argc*/, char* /*argv*/[]) -> int
 
 __attribute((weak)) auto main(int /*argc*/, char* /*argv*/[]) -> int
 {
-  std::cout << "Hello main" << std::endl;
+  std::cout << "Hello main 123" << std::endl;
   return 0;
 }

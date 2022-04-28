@@ -13,7 +13,7 @@ function(aws_lambda_package_target target)
     else()
         set (PACKAGER_NO_LIBC "")
     endif()
-    add_custom_target("aws_lambda_package-${target}"
+    add_custom_target("aws_lambda_package_${target}"
         COMMAND ${AWS_LAMBDA_PACKAGING_SCRIPT} ${PACKAGER_NO_LIBC} "--sysroot" ${SYSROOT} "--project" ${CMAKE_BINARY_DIR} "--image" ${DOCKER_IMAGE} $<TARGET_FILE:${target}>
         DEPENDS ${target})
 endfunction()
@@ -55,9 +55,12 @@ function(aws_lambda_serverless_target NAME)
                 -DCMAKE_TOOLCHAIN_FILE=${CMAKE_SOURCE_DIR}/cmake/toolchains/linux-musl/toolchain.cmake
                 -DCMAKE_MAKE_PROGRAM=${CMAKE_MAKE_PROGRAM}
             INSTALL_COMMAND true
-            BUILD_COMMAND cmake --build . --target aws_lambda_package-${NAME}
+            BUILD_COMMAND cmake --build . --target aws_lambda_package_${NAME}
             )
-        add_dependencies("${NAME}" ${PROJECT_NAME}-aws-lambda-serverless)
+        # Add custom target which depends on "$NAME" and "${PROJECT_NAME}-aws-lambda-serverless"
+        add_custom_target("serverless_${NAME}" COMMAND "true")
+        add_dependencies("serverless_${NAME}" ${PROJECT_NAME}-aws-lambda-serverless)
+        add_dependencies("serverless_${NAME}" ${NAME})
         
     endif()
 endfunction()
