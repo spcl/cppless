@@ -102,7 +102,7 @@ PKG_BIN_FILENAME=$(basename "$PKG_BIN_PATH")
 PKG_DIR="$(pwd)/tmp"
 PKG_LD=""
 
-list=$(docker run --rm -it -v $PROJ_ROOT:/usr/src/project $DOCKER_IMAGE ldd "/usr/src/project/${PKG_BIN_PATH#$PROJ_ROOT}" | awk '{print $(NF-1)}')
+list=$(docker run --rm -v $PROJ_ROOT:/usr/src/project $DOCKER_IMAGE ldd "/usr/src/project/${PKG_BIN_PATH#$PROJ_ROOT}" | awk '{print $(NF-1)}')
 libc_libs=()
 libc_libs+=($(package_libc_alpine))
 
@@ -170,7 +170,7 @@ EOF
 
 
 cp "$PKG_BIN_PATH" "$PKG_DIR/bin"
-docker run --rm -it -v $PROJ_ROOT:/usr/src/project $DOCKER_IMAGE strip "/usr/src/project/${PKG_DIR#$PROJ_ROOT}/bin/$PKG_BIN_FILENAME"
+docker run --rm -v $PROJ_ROOT:/usr/src/project $DOCKER_IMAGE strip "/usr/src/project/${PKG_DIR#$PROJ_ROOT}/bin/$PKG_BIN_FILENAME"
 if [[ $INCLUDE_LIBC == true ]]; then
     echo -e "$bootstrap_script" > "$PKG_DIR/bootstrap"
 else

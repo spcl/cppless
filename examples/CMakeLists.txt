@@ -12,10 +12,9 @@ endif()
 add_custom_target(run-examples)
 
 function(add_example NAME)
-  add_compile_options(-cppless -falt-entry "-ffile-prefix-map=${CMAKE_SOURCE_DIR}=.")
-  add_link_options(-cppless -falt-entry)
-
   add_executable("${NAME}" "${NAME}.cpp")
+  target_compile_options("${NAME}" PRIVATE -cppless -falt-entry "-ffile-prefix-map=${CMAKE_SOURCE_DIR}=.")
+  target_link_options("${NAME}" PRIVATE -cppless -falt-entry)
   target_link_libraries("${NAME}" PRIVATE cppless::cppless)
   target_compile_features("${NAME}" PRIVATE cxx_std_20)
   add_custom_target("run_${NAME}" COMMAND "./${NAME}" VERBATIM)

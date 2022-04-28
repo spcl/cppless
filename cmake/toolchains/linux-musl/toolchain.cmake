@@ -2,11 +2,16 @@ set(CMAKE_SYSTEM_NAME "Linux")
 set(CMAKE_SYSTEM_PROCESSOR "x86_64")
 
 set(CMAKE_CROSSCOMPILING 1)
-set(PROJECT_SOURCE_DIR ${CMAKE_CURRENT_SOURCE_DIR})
-set(COMPILER_BIN ${PROJECT_SOURCE_DIR}/llvm-project/build/bin)
+set(ROOT_DIR "${CMAKE_CURRENT_LIST_DIR}/../../..")
+cmake_path(SET ROOT_DIR NORMALIZE "${ROOT_DIR}")
 
-set(CMAKE_C_COMPILER ${COMPILER_BIN}/clang)
-set(CMAKE_CXX_COMPILER ${COMPILER_BIN}/clang++)
+set(CPPLESS_SERVERLESS 1)
+set(CPPLESS_STATIC_LINKAGE 1)
+
+set(COMPILER_BIN ${ROOT_DIR}llvm-project/build/bin/)
+
+set(CMAKE_C_COMPILER ${COMPILER_BIN}clang)
+set(CMAKE_CXX_COMPILER ${COMPILER_BIN}clang++)
 set(AR x86_64-unknown-linux-musl-ar)
 set(CMAKE_AR ${AR})
 set(RANLIB x86_64-unknown-linux-musl-ranlib)
@@ -14,7 +19,7 @@ set(CMAKE_RANLIB ${RANLIB})
 
 set(DOCKER_IMAGE aws-example-tc)
 
-set(SYSROOT ${CMAKE_CURRENT_SOURCE_DIR}/cmake/toolchains/linux-musl/sysroot)
+set(SYSROOT ${ROOT_DIR}cmake/toolchains/linux-musl/sysroot)
 set(OSX_SYSROOT ${SYSROOT})
 set(CMAKE_SYSROOT ${SYSROOT})
 
@@ -26,7 +31,7 @@ set(COMPILER_FLAGS "${COMMON_FLAGS}")
 set(CMAKE_CXX_FLAGS "${COMPILER_FLAGS} -stdlib=libstdc++")
 set(CMAKE_C_FLAGS "${COMPILER_FLAGS}")
 
-set(LINK_FLAGS "${COMMON_FLAGS} -static -L${PROJECT_SOURCE_DIR}/cmake/toolchains/linux-musl/sysroot/lib --gcc-toolchain=${PROJECT_SOURCE_DIR}/cmake/toolchains/linux-musl/sysroot/usr")
+set(LINK_FLAGS "${COMMON_FLAGS} -static -L${ROOT_DIR}cmake/toolchains/linux-musl/sysroot/lib --gcc-toolchain=${ROOT_DIR}cmake/toolchains/linux-musl/sysroot/usr")
 set(CMAKE_BUILD_TYPE "Debug")
 
 # these variables tell CMake to avoid using any binary it finds in 

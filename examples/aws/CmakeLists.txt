@@ -1,9 +1,11 @@
 include(FetchContent)
 project(cpplessExamplesAws LANGUAGES CXX)
 
-fetchContent_MakeAvailable(aws-lambda-cpp)
 set(AWS_LAMBDA_PACKAGING_SCRIPT "${CMAKE_SOURCE_DIR}/tools/packager/packager")
 function(aws_lambda_package_target target)
+    if (NOT CPPLESS_SERVERLESS)
+        return()
+    endif()
     set(options OPTIONAL NO_LIBC)
     cmake_parse_arguments(PACKAGER "${options}" "" "" ${ARGN})
     if (${PACKAGER_NO_LIBC})
@@ -17,15 +19,53 @@ function(aws_lambda_package_target target)
 endfunction()
 
 function(aws_lambda_target NAME)
-    target_compile_features("${NAME}" PRIVATE "cxx_std_11")
+    # Cppless options
+    target_compile_options("${NAME}" PRIVATE -cppless -falt-entry "-ffile-prefix-map=${CMAKE_SOURCE_DIR}=.")
+    target_link_options("${NAME}" PRIVATE -cppless -falt-entry)
+
+    target_compile_features("${NAME}" PRIVATE cxx_std_20)
     target_compile_options("${NAME}" PRIVATE "-Wall" "-Wextra")
+    
+    # Link libraries
+    fetchContent_MakeAvailable(aws-lambda-cpp)
     target_link_libraries("${NAME}" PRIVATE aws-lambda-runtime)
-    target_link_libraries("${NAME}" PRIVATE -static-libgcc -static-libstdc++)
+    target_link_libraries("${NAME}" PRIVATE cppless::cppless)
+
+    if (DEFINED CPPLESS_STATIC_LINKAGE)
+        target_link_libraries("${NAME}" PRIVATE -static-libgcc -static-libstdc++)
+    endif()
 
     find_package(CURL REQUIRED)
     target_link_libraries("${NAME}" PRIVATE CURL::libcurl)
 endfunction()
 
+
+function(aws_lambda_serverless_target NAME)
+    if(DEFINED CPPLESS_SERVERLESS)
+        aws_lambda_target("${NAME}")
+        aws_lambda_package_target("${NAME}")
+    else()
+        include(ExternalProject)
+        ExternalProject_Add(${PROJECT_NAME}-aws-lambda-serverless
+            SOURCE_DIR "${CMAKE_SOURCE_DIR}"
+            BUILD_ALWAYS ON
+            CMAKE_ARGS
+                -DCPPLESS_SERVERLESS=ON
+                -DCMAKE_BUILD_TYPE=Release
+                -DCMAKE_TOOLCHAIN_FILE=${CMAKE_SOURCE_DIR}/cmake/toolchains/linux-musl/toolchain.cmake
+                -DCMAKE_MAKE_PROGRAM=${CMAKE_MAKE_PROGRAM}
+            INSTALL_COMMAND true
+            BUILD_COMMAND cmake --build . --target aws_lambda_package-${NAME}
+            )
+        add_dependencies("${NAME}" ${PROJECT_NAME}-aws-lambda-serverless)
+        
+    endif()
+endfunction()
+
 add_executable(hello_world "hello_world.cpp")
 aws_lambda_target(hello_world)
 aws_lambda_package_target(hello_world)
+
+add_executable(host_controller_aws "host_controller_aws.cpp")
+aws_lambda_target(host_controller_aws)
+aws_lambda_serverless_target(host_controller_aws)

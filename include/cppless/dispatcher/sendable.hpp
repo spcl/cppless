@@ -8,8 +8,8 @@
 
 #include <cereal/archives/json.hpp>
 #include <cereal/cereal.hpp>
-#include <cppless/cconv/cereal.hpp>
 #include <cppless/detail/deduction.hpp>
+#include <cppless/utils/cereal.hpp>
 #include <cppless/utils/fixed_string.hpp>
 
 namespace cppless

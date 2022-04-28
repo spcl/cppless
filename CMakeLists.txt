@@ -155,9 +155,9 @@ endif()
 
 # ---- Examples ----
 
-if(PROJECT_IS_TOP_LEVEL)
+if(PROJECT_IS_TOP_LEVEL OR DEFINED CPPLESS_SERVERLESS)
   option(BUILD_EXAMPLES "Build examples tree." "${cppless_DEVELOPER_MODE}")
-  if(BUILD_EXAMPLES)
+  if(BUILD_EXAMPLES OR DEFINED CPPLESS_SERVERLESS)
     add_subdirectory(examples)
   endif()
 endif()
