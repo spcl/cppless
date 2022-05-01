@@ -1,7 +1,7 @@
 include(FetchContent)
 project(cpplessExamplesAws LANGUAGES CXX)
 
-set(AWS_LAMBDA_PACKAGING_SCRIPT "${CMAKE_SOURCE_DIR}/tools/packager/packager")
+set(AWS_LAMBDA_PACKAGING_SCRIPT "${CMAKE_SOURCE_DIR}/tools/packagerpy/packager.py")
 function(aws_lambda_package_target target)
     if (NOT CPPLESS_SERVERLESS)
         return()
@@ -20,8 +20,13 @@ endfunction()
 
 function(aws_lambda_target NAME)
     # Cppless options
-    target_compile_options("${NAME}" PRIVATE -cppless -falt-entry "-ffile-prefix-map=${CMAKE_SOURCE_DIR}=.")
-    target_link_options("${NAME}" PRIVATE -cppless -falt-entry)
+    if (CPPLESS_SERVERLESS)
+        target_compile_options("${NAME}" PRIVATE -cppless -falt-entry "-ffile-prefix-map=${CMAKE_SOURCE_DIR}=.")
+        target_link_options("${NAME}" PRIVATE -cppless -falt-entry)
+    else()
+        target_compile_options("${NAME}" PRIVATE -cppless "-ffile-prefix-map=${CMAKE_SOURCE_DIR}=.")
+        target_link_options("${NAME}" PRIVATE -cppless)
+    endif()
 
     target_compile_features("${NAME}" PRIVATE cxx_std_20)
     target_compile_options("${NAME}" PRIVATE "-Wall" "-Wextra")
@@ -42,7 +47,6 @@ endfunction()
 
 function(aws_lambda_serverless_target NAME)
     if(DEFINED CPPLESS_SERVERLESS)
-        aws_lambda_target("${NAME}")
         aws_lambda_package_target("${NAME}")
     else()
         include(ExternalProject)

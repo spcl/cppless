@@ -1,11 +1,12 @@
-from pathlib import Path, PosixPath, PurePath, PurePosixPath
+#!/usr/bin/env python3
+
 import argparse
 import json
-import subprocess
 import zipfile
+from pathlib import Path, PurePosixPath
+
 import docker
 from docker.models.containers import Container
-
 
 parser = argparse.ArgumentParser(
     description="Packages all alternative entry points of a binary compiled with the cppless alt-entry option"
@@ -48,7 +49,6 @@ parser.add_argument(
 )
 
 args = parser.parse_args()
-print(args)
 
 input_path = Path(args.input)
 sysroot_path = Path(args.sysroot)
@@ -152,7 +152,6 @@ def aws_lambda_package(
 
         for lib_path in lib_paths:
             local_path = sysroot_path / lib_path.relative_to(lib_path.anchor)
-            print(local_path)
             zf.write(str(local_path), arcname=(lib / local_path.name).as_posix())
 
         zf.write(executable_path, arcname=(bin / executable_path.name).as_posix())
