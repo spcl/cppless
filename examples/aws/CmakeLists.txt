@@ -9,9 +9,9 @@ function(aws_lambda_package_target target)
     set(options OPTIONAL NO_LIBC)
     cmake_parse_arguments(PACKAGER "${options}" "" "" ${ARGN})
     if (${PACKAGER_NO_LIBC})
-        set (PACKAGER_NO_LIBC "-d")
+        set (PACKAGER_NO_LIBC "--no-libc")
     else()
-        set (PACKAGER_NO_LIBC "")
+        set (PACKAGER_NO_LIBC "--libc")
     endif()
     add_custom_target("aws_lambda_package_${target}"
         COMMAND ${AWS_LAMBDA_PACKAGING_SCRIPT} ${PACKAGER_NO_LIBC} "--sysroot" ${SYSROOT} "--project" ${CMAKE_BINARY_DIR} "--image" ${DOCKER_IMAGE} $<TARGET_FILE:${target}>
