@@ -1,12 +1,16 @@
 #!/usr/bin/env python3
-
+from awscurl.__main__ import main
 import argparse
 import json
+import time
 import zipfile
 from pathlib import Path, PurePosixPath
 
+import boto3
 import docker
 from docker.models.containers import Container
+
+aws_lambda = boto3.client("lambda")
 
 parser = argparse.ArgumentParser(
     description="Packages all alternative entry points of a binary compiled with the cppless alt-entry option"
@@ -39,7 +43,6 @@ parser.add_argument(
     required=True,
 )
 parser.add_argument(
-    "-d",
     "--libc",
     metavar="libc",
     type=bool,
@@ -108,6 +111,14 @@ def generate_no_libc_bootstrap_script(
     return bootstrap_no_libc_script_template.format(pkg_bin_filename=pkg_bin_filename)
 
 
+def get_executable_zinfo(zipfile: zipfile.ZipFile, name: str):
+    zinfo = zipfile.ZipInfo(filename=name, date_time=time.localtime(time.time())[:6])
+    zinfo.compress_type = zipfile.compression
+    zinfo._compresslevel = zipfile.compresslevel
+    zinfo.external_attr = 0o777 << 16  # ?rwxrwxrwx
+    return zinfo
+
+
 def aws_lambda_package(
     executable_path: Path,
     sysroot_path: Path,
@@ -157,20 +168,23 @@ def aws_lambda_package(
         zf.write(executable_path, arcname=(bin / executable_path.name).as_posix())
         pkg_bin_filename = executable_path.name
         if libc:
-            pkg_ld_filter = filter(lambda p: p.name.startswith("ld-"), lib_paths)
+            pkg_ld_filter = list(filter(lambda p: p.name.startswith("ld-"), lib_paths))
             if len(pkg_ld_filter) != 1:
                 raise Exception(
                     "Expected exactly one ld-* library, found {}".format(
                         len(pkg_ld_filter)
                     )
                 )
-            pkg_ld = next(pkg_ld_filter)
+            pkg_ld = pkg_ld_filter[0]
+
             zf.writestr(
-                "bootstrap", generate_libc_bootstrap_script(pkg_ld, pkg_bin_filename)
+                get_executable_zinfo(zf, "bootstrap"),
+                generate_libc_bootstrap_script(pkg_ld.name, pkg_bin_filename),
             )
         else:
             zf.writestr(
-                "bootstrap", generate_no_libc_bootstrap_script(pkg_bin_filename)
+                get_executable_zinfo(zf, "bootstrap"),
+                generate_no_libc_bootstrap_script(pkg_bin_filename),
             )
 
 
@@ -186,6 +200,7 @@ json_path = input_path.with_suffix(".json")
 
 with json_path.open("r") as f:
     data = json.load(f)
+
 
 entry_points = data["entry_points"]
 for entry_point in entry_points:
