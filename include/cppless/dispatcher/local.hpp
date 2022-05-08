@@ -10,15 +10,14 @@
 #include <string>
 #include <tuple>
 
-#include <cereal/archives/json.hpp>
 #include <cereal/cereal.hpp>
 #include <cereal/types/tuple.hpp>
+#include <cppless/detail/deduction.hpp>
 #include <cppless/dispatcher/common.hpp>
 #include <cppless/dispatcher/sendable.hpp>
 #include <cppless/utils/cereal.hpp>
+#include <cppless/utils/uninitialized.hpp>
 #include <nlohmann/json.hpp>
-
-#include "cppless/detail/deduction.hpp"
 
 namespace cppless::dispatcher
 {
@@ -122,35 +121,7 @@ public:
   static auto main(int /*argc*/, char* /*argv*/[]) -> int
   {
     using recv = receivable_lambda<Lambda, Res, Args...>;
-    union uninitialized_recv
-    {
-      recv m_self;
-      std::aligned_storage_t<sizeof(recv), alignof(recv)> m_data;
-      /**
-       * @brief The constructor initializes `m_data`, thus m_self is keeps being
-       * uninitialized. This operation is save when we assume that the
-       * unarchiving of the lambda restores all internal fields
-       */
-      uninitialized_recv()
-          : m_data()
-      {
-      }
-      /**
-       * @brief When the destructor is called we assume that the object has been
-       * initialized, thus we call the destructor of `m_self`.
-       */
-      ~uninitialized_recv()
-      {
-        m_self.~recv();
-      }
-
-      // Delete copy and move constructors and assignment operators
-      uninitialized_recv(const uninitialized_recv&) = delete;
-      uninitialized_recv(uninitialized_recv&&) = delete;
-
-      auto operator=(const uninitialized_recv&) -> uninitialized_recv& = delete;
-      auto operator=(uninitialized_recv&&) -> uninitialized_recv& = delete;
-    };
+    using uninitialized_recv = cppless::uninitialized_data<recv>;
     input_archive iar(std::cin);
     uninitialized_recv u;
     std::tuple<Args...> s_args;

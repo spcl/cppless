@@ -1,23 +1,43 @@
-#include <iostream>
+#include <future>
+#include <string>
+#include <tuple>
+#include <vector>
 
-#include <aws/lambda-runtime/runtime.h>
+#include <cereal/archives/binary.hpp>
+#include <cereal/details/helpers.hpp>
+#include <cppless/dispatcher/aws-lambda.hpp>
 
-using invocation_response = aws::lambda_runtime::invocation_response;
-using invocation_request = aws::lambda_runtime::invocation_request;
+#include "cppless/dispatcher/common.hpp"
 
-auto my_handler(invocation_request const& /*request*/) -> invocation_response
+using dispatcher = cppless::dispatcher::aws_lambda_dispatcher;
+using task = cppless::task<dispatcher>;
+
+__attribute((weak)) auto main(int argc, char* argv[]) -> int
 {
-  return invocation_response::success("Hello, World 123!", "application/json");
-}
+  std::vector<std::string> args {argv, argv + argc};
 
-__attribute((entry)) auto alt_entry(int /*argc*/, char* /*argv*/[]) -> int
-{
-  run_handler(my_handler);
-  return 0;
-}
+  cppless::aws::lambda::client lambda_client;
+  auto key = lambda_client.create_derived_key_from_env();
+  dispatcher aws {"", lambda_client, key};
 
-__attribute((weak)) auto main(int /*argc*/, char* /*argv*/[]) -> int
-{
-  std::cout << "Hello main 123" << std::endl;
-  return 0;
+  {
+    auto instance = aws.create_instance();
+
+    int a = -1;
+
+    task::sendable t0 = [=]() { return a + 3; };
+    task::sendable t1 = [=]() { return 1 - a; };
+    cppless::shared_future<int> t0_result;
+    cppless::shared_future<int> t1_result;
+    instance.dispatch(t0, t0_result, std::make_tuple());
+    instance.dispatch(t1, t1_result, std::make_tuple());
+
+    int x = instance.wait_one();
+    std::cout << "x = " << x << std::endl;
+    int y = instance.wait_one();
+    std::cout << "y = " << y << std::endl;
+
+    std::cout << t0_result.get_value() << std::endl;
+    std::cout << t1_result.get_value() << std::endl;
+  }
 }

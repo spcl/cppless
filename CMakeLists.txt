@@ -55,6 +55,7 @@ conan_cmake_configure(REQUIRES cereal/1.3.1
                                boost-ext-ut/1.1.8
                                openssl/3.0.2
                                libcurl/7.80.0
+                               argparse/2.3
                       GENERATORS cmake_find_package
                       OPTIONS libnghttp2:with_asio=True
                               boost:without_locale=True
@@ -143,6 +144,9 @@ target_link_libraries(cppless_cppless INTERFACE cereal::cereal)
 
 find_package(libnghttp2 REQUIRED)
 target_link_libraries(cppless_cppless INTERFACE libnghttp2::libnghttp2)
+
+find_package(argparse REQUIRED)
+target_link_libraries(cppless_cppless INTERFACE argparse::argparse)
 
 # ---- Tools ----
 add_subdirectory(tools)

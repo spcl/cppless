@@ -329,8 +329,6 @@ auto main(int /*argc*/, char* /*argv*/[]) -> int
         res.write_head(status_ok);
         res.end(boost::uuids::to_string(file->uuid()));
         file->write_stream() << std::flush;
-
-        chmod(file->path(), );
       };
       ostream_cb cb(file->write_stream(), eof_cb);
       req.on_data(cb);

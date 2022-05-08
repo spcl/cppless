@@ -1,16 +1,16 @@
 #!/usr/bin/env python3
-from awscurl.__main__ import main
 import argparse
+import hashlib
 import json
 import time
 import zipfile
 from pathlib import Path, PurePosixPath
+import botocore.exceptions
 
 import boto3
 import docker
 from docker.models.containers import Container
-
-aws_lambda = boto3.client("lambda")
+from mypy_boto3_lambda import LambdaClient
 
 parser = argparse.ArgumentParser(
     description="Packages all alternative entry points of a binary compiled with the cppless alt-entry option"
@@ -111,10 +111,10 @@ def generate_no_libc_bootstrap_script(
     return bootstrap_no_libc_script_template.format(pkg_bin_filename=pkg_bin_filename)
 
 
-def get_executable_zinfo(zipfile: zipfile.ZipFile, name: str):
+def get_executable_zinfo(zf: zipfile.ZipFile, name: str):
     zinfo = zipfile.ZipInfo(filename=name, date_time=time.localtime(time.time())[:6])
-    zinfo.compress_type = zipfile.compression
-    zinfo._compresslevel = zipfile.compresslevel
+    zinfo.compress_type = zf.compression
+    zinfo._compresslevel = zf.compresslevel
     zinfo.external_attr = 0o777 << 16  # ?rwxrwxrwx
     return zinfo
 
@@ -131,7 +131,8 @@ def aws_lambda_package(
         return PurePosixPath(container_root / local_path.relative_to(project_path))
 
     zip_path = executable_path.with_suffix(".zip")
-    with zipfile.ZipFile(str(zip_path), "w") as zf:
+
+    with zipfile.ZipFile(zip_path, "w") as zf:
         bin = PurePosixPath("bin")
         lib = PurePosixPath("lib")
         _, ldd_output = container.exec_run(
@@ -186,6 +187,7 @@ def aws_lambda_package(
                 get_executable_zinfo(zf, "bootstrap"),
                 generate_no_libc_bootstrap_script(pkg_bin_filename),
             )
+    return zip_path
 
 
 container = docker_client.containers.run(
@@ -203,10 +205,34 @@ with json_path.open("r") as f:
 
 
 entry_points = data["entry_points"]
-for entry_point in entry_points:
-    entry_file_name = entry_point["filename"]
-    entry_file_path = input_path.parent / entry_file_name
-    with ContainerWrapper(container) as container:
-        aws_lambda_package(
+with ContainerWrapper(container) as container:
+    for entry_point in entry_points:
+        entry_file_name = entry_point["filename"]
+        entry_file_path = input_path.parent / entry_file_name
+        zip_path = aws_lambda_package(
             entry_file_path, sysroot_path, project_path, container, container_root, libc
+        )
+
+        aws_lambda: LambdaClient = boto3.client("lambda")
+        provided_function_name = entry_point["user_meta"]
+        # hash & hex encode the function name to avoid issues with special characters
+        function_name = (
+            hashlib.sha256(provided_function_name.encode("utf-8")).digest().hex()
+        )
+        print(
+            "{function_name}: {provided_function_name}".format(
+                function_name=function_name,
+                provided_function_name=provided_function_name,
+            )
+        )
+        try:
+            aws_lambda.delete_function(FunctionName=function_name)
+        except botocore.exceptions.ClientError:
+            pass
+        aws_lambda.create_function(
+            FunctionName=function_name,
+            Runtime="provided",
+            Role="arn:aws:iam::212804181742:role/lambda-cpp-demo",
+            Handler="bootstrap",
+            Code={"ZipFile": open(zip_path, "rb").read()},
         )

@@ -65,7 +65,9 @@ function(aws_lambda_serverless_target NAME)
         add_custom_target("serverless_${NAME}" COMMAND "true")
         add_dependencies("serverless_${NAME}" ${PROJECT_NAME}-aws-lambda-serverless)
         add_dependencies("serverless_${NAME}" ${NAME})
-        
+
+        add_custom_target("run_serverless_${NAME}" COMMAND "./${NAME}" VERBATIM)
+        add_dependencies("run_serverless_${NAME}" "serverless_${NAME}")
     endif()
 endfunction()
 
