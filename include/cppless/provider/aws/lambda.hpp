@@ -83,6 +83,21 @@ public:
   auto on_http2_response(const nghttp2::asio_http2::client::response& res)
       -> void
   {
+    if (res.status_code() != 200) {
+      res.on_data(
+          [&res, buffer = std::vector<unsigned char> {}](
+              const uint8_t* data, std::size_t len) mutable
+          {
+            buffer.insert(buffer.end(), &data[0], &data[len]);  // NOLINT
+            if (len == 0) {
+              std::cerr << "status_code: " << res.status_code() << std::endl;
+              std::cerr << "buffer: " << std::endl;
+              std::cerr << buffer.data() << std::endl;
+            }
+          });
+      return;
+    }
+
     res.on_data(
         [this](const uint8_t* data, std::size_t len)
         {

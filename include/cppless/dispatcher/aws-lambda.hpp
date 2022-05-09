@@ -61,7 +61,8 @@ public:
           std::stringstream ss_out;
           {
             Res res = std::apply(u.m_self.m_lambda, s_args);
-            cereal::JSONOutputArchive oar(ss_out);
+            cereal::JSONOutputArchive oar(
+                ss_out, cereal::JSONOutputArchive::Options::NoIndent());
             oar(res);
           }
           return invocation_response::success(ss_out.str(), "application/json");
@@ -104,6 +105,13 @@ public:
       }
     }
 
+    // Destructor
+    ~instance()
+    {
+      m_session.shutdown();
+      m_io_service.run();
+    }
+
     // Delete copy constructor
     instance(const instance&) = delete;
     // Delete copy assignment
@@ -116,7 +124,6 @@ public:
         , m_session(std::move(other.m_session))
         , m_requests(std::move(other.m_requests))
         , m_finished(std::move(other.m_finished))
-        , m_pending_requests(other.m_pending_requests)
         , m_next_id(other.m_next_id)
         , m_dispatcher(other.m_dispatcher)
     {
@@ -130,7 +137,6 @@ public:
       m_session = std::move(other.m_session);
       m_requests = std::move(other.m_requests);
       m_finished = std::move(other.m_finished);
-      m_pending_requests = other.m_pending_requests;
       m_next_id = other.m_next_id;
       m_dispatcher = other.m_dispatcher;
       return *this;
@@ -158,7 +164,8 @@ public:
 
       std::stringstream ss_out;
       {
-        cereal::JSONOutputArchive oar(ss_out);
+        cereal::JSONOutputArchive oar(
+            ss_out, cereal::JSONOutputArchive::Options::NoIndent());
         specialized_task_data data {t, args};
         oar(data);
       }
@@ -189,17 +196,7 @@ public:
             copy.set_value(result);
             m_finished.insert(id);
           });
-      const auto* sess_req = req_ref->submit(m_session, m_lambda_client, m_key);
-      sess_req->on_close(
-          [this](const auto&)
-          {
-            m_pending_requests--;
-            if (m_pending_requests == 0) {
-              m_session.shutdown();
-            }
-          });
-
-      m_pending_requests++;
+      req_ref->submit(m_session, m_lambda_client, m_key);
 
       return id;
     }
@@ -224,7 +221,6 @@ public:
         m_requests;
     std::unordered_set<int> m_finished;
 
-    int m_pending_requests = 0;
     int m_next_id = 0;
 
     aws_lambda_dispatcher& m_dispatcher;

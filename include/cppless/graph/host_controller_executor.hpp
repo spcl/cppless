@@ -102,12 +102,13 @@ public:
 
     auto get_args() -> std::tuple<Args...>
     {
-      return map_tuple(this->get_slots(),
-                       []<class T>(std::shared_ptr<receiver_slot<T>> slot)
-                       {
-                         const std::optional<T>& arg = slot->get();
-                         return arg.value();
-                       });
+      return map_tuple(
+          this->get_slots(),
+          []<class R, class T>(std::shared_ptr<graph::receiver_slot<R, T>> slot)
+          {
+            const std::optional<T>& arg = slot->get();
+            return arg.value();
+          });
     }
   };
 
@@ -266,7 +267,10 @@ public:
         std::size_t node_id = m_ready_nodes.back();
         auto node = builder->get_node(node_id);
         m_ready_nodes.pop_back();
+
         int future_id = node->run(m_instance);
+        std::cout << "Dispatched node " << node_id
+                  << ", future_id: " << future_id << std::endl;
 
         wait_spans.emplace(node_id, "wait");
 
@@ -292,7 +296,10 @@ public:
         break;
       }
 
+      std::cout << "Wait one" << std::endl;
       int finished = m_instance.wait_one();
+      std::cout << "Wait one done, id: " << finished << std::endl;
+
       std::size_t finished_node_id = m_future_node_map[finished];
       auto node = builder->get_node(finished_node_id);
 
