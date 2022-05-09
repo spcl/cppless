@@ -14,7 +14,14 @@ function(aws_lambda_package_target target)
         set (PACKAGER_NO_LIBC "--libc")
     endif()
     add_custom_target("aws_lambda_package_${target}"
-        COMMAND ${AWS_LAMBDA_PACKAGING_SCRIPT} ${PACKAGER_NO_LIBC} "--sysroot" ${SYSROOT} "--project" ${CMAKE_BINARY_DIR} "--image" ${DOCKER_IMAGE} $<TARGET_FILE:${target}>
+        COMMAND ${AWS_LAMBDA_PACKAGING_SCRIPT} ${PACKAGER_NO_LIBC}
+        "--sysroot" ${SYSROOT}
+        "--project" ${CMAKE_BINARY_DIR}
+        "--image" ${DOCKER_IMAGE}
+        "--strip"
+        "--deploy"
+        "--function-role-arn" ${AWS_LAMBDA_FUNCTION_ROLE_ARN}
+        $<TARGET_FILE:${target}>
         DEPENDS ${target})
 endfunction()
 
@@ -50,7 +57,7 @@ function(aws_lambda_serverless_target NAME)
         aws_lambda_package_target("${NAME}")
     else()
         include(ExternalProject)
-        ExternalProject_Add(${PROJECT_NAME}-aws-lambda-serverless
+        ExternalProject_Add(serverless-${NAME}
             SOURCE_DIR "${CMAKE_SOURCE_DIR}"
             BUILD_ALWAYS ON
             CMAKE_ARGS
@@ -58,12 +65,13 @@ function(aws_lambda_serverless_target NAME)
                 -DCMAKE_BUILD_TYPE=Release
                 -DCMAKE_TOOLCHAIN_FILE=${CMAKE_SOURCE_DIR}/cmake/toolchains/linux-musl/toolchain.cmake
                 -DCMAKE_MAKE_PROGRAM=${CMAKE_MAKE_PROGRAM}
+                -DAWS_LAMBDA_FUNCTION_ROLE_ARN=${AWS_LAMBDA_FUNCTION_ROLE_ARN}
             INSTALL_COMMAND true
             BUILD_COMMAND cmake --build . --target aws_lambda_package_${NAME}
             )
         # Add custom target which depends on "$NAME" and "${PROJECT_NAME}-aws-lambda-serverless"
         add_custom_target("serverless_${NAME}" COMMAND "true")
-        add_dependencies("serverless_${NAME}" ${PROJECT_NAME}-aws-lambda-serverless)
+        add_dependencies("serverless_${NAME}" serverless-${NAME})
         add_dependencies("serverless_${NAME}" ${NAME})
 
         add_custom_target("run_serverless_${NAME}" COMMAND "./${NAME}" VERBATIM)
@@ -75,6 +83,10 @@ add_executable(hello_world "hello_world.cpp")
 aws_lambda_target(hello_world)
 aws_lambda_package_target(hello_world)
 
-add_executable(host_controller_aws "host_controller_aws.cpp")
-aws_lambda_target(host_controller_aws)
-aws_lambda_serverless_target(host_controller_aws)
+add_executable(host_controller_executor_aws "host_controller_executor.cpp")
+aws_lambda_target(host_controller_executor_aws)
+aws_lambda_serverless_target(host_controller_executor_aws)
+
+add_executable(dispatcher_aws "dispatcher.cpp")
+aws_lambda_target(dispatcher_aws)
+aws_lambda_serverless_target(dispatcher_aws)

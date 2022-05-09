@@ -1,16 +1,23 @@
 #!/usr/bin/env python3
 import argparse
+import base64
+from datetime import datetime
 import hashlib
+import io
 import json
+import os
 import time
 import zipfile
 from pathlib import Path, PurePosixPath
-import botocore.exceptions
+from threading import Thread
+from typing import List
 
 import boto3
+import botocore.exceptions
 import docker
 from docker.models.containers import Container
 from mypy_boto3_lambda import LambdaClient
+
 
 parser = argparse.ArgumentParser(
     description="Packages all alternative entry points of a binary compiled with the cppless alt-entry option"
@@ -50,6 +57,33 @@ parser.add_argument(
     default=False,
     action=argparse.BooleanOptionalAction,
 )
+parser.add_argument(
+    "--strip",
+    metavar="strip",
+    type=bool,
+    help="Strip the executable.",
+    default=False,
+    action=argparse.BooleanOptionalAction,
+)
+parser.add_argument(
+    "--deploy",
+    metavar="deploy",
+    type=bool,
+    help="Deploy the package to AWS Lambda.",
+    default=False,
+    action=argparse.BooleanOptionalAction,
+)
+parser.add_argument(
+    "-r",
+    "--function-role-arn",
+    metavar="function-role-arn",
+    type=str,
+    help="The role ARN to use for the Lambda functions.",
+    required=False,
+    default="",
+)
+
+some_time = datetime.utcfromtimestamp(420000000)
 
 args = parser.parse_args()
 
@@ -58,10 +92,12 @@ sysroot_path = Path(args.sysroot)
 project_path = Path(args.project).absolute()
 image = args.image
 libc = args.libc
-
+strip = args.strip
+deploy = args.deploy
+function_role_arn = args.function_role_arn
 
 container_root = PurePosixPath("/usr/src/project/")
-
+aws_lambda: LambdaClient = boto3.client("lambda")
 docker_client = docker.from_env()
 
 
@@ -111,12 +147,39 @@ def generate_no_libc_bootstrap_script(
     return bootstrap_no_libc_script_template.format(pkg_bin_filename=pkg_bin_filename)
 
 
-def get_executable_zinfo(zf: zipfile.ZipFile, name: str):
-    zinfo = zipfile.ZipInfo(filename=name, date_time=time.localtime(time.time())[:6])
+def get_zinfo(zf: zipfile.ZipFile, name: str, external_attr: int) -> zipfile.ZipInfo:
+    zinfo = zipfile.ZipInfo(filename=name, date_time=time.gmtime(420000000)[:6])
     zinfo.compress_type = zf.compression
     zinfo._compresslevel = zf.compresslevel
-    zinfo.external_attr = 0o777 << 16  # ?rwxrwxrwx
+    zinfo.external_attr = external_attr
     return zinfo
+
+
+def strip_binary(
+    executable_path: Path,
+    project_path: Path,
+    container: Container,
+    container_root: PurePosixPath,
+):
+    def local_path_to_container_path(local_path: Path) -> PurePosixPath:
+        return PurePosixPath(container_root / local_path.relative_to(project_path))
+
+    _, _ = container.exec_run(
+        ["strip", local_path_to_container_path(executable_path).as_posix()]
+    )
+
+
+def get_musl_paths(container: Container):
+    paths: set[PurePosixPath] = set()
+
+    _, apk_output = container.exec_run(["apk", "info", "--contents", "musl"])
+    apk_lines = apk_output.decode("utf-8").split("\n")[1:]
+    for line in apk_lines:
+        stripped = line.strip()
+        if not stripped:
+            continue
+        paths.add(PurePosixPath("/" + stripped))
+    return paths
 
 
 def aws_lambda_package(
@@ -126,13 +189,13 @@ def aws_lambda_package(
     container: Container,
     container_root: PurePosixPath,
     libc: bool,
+    musl_paths: set[PurePosixPath],
 ):
     def local_path_to_container_path(local_path: Path) -> PurePosixPath:
         return PurePosixPath(container_root / local_path.relative_to(project_path))
 
-    zip_path = executable_path.with_suffix(".zip")
-
-    with zipfile.ZipFile(zip_path, "w") as zf:
+    zip = io.BytesIO()
+    with zipfile.ZipFile(zip, "a") as zf:
         bin = PurePosixPath("bin")
         lib = PurePosixPath("lib")
         _, ldd_output = container.exec_run(
@@ -142,6 +205,9 @@ def aws_lambda_package(
             ]
         )
         lib_paths: set[PurePosixPath] = set()
+
+        for path in musl_paths:
+            lib_paths.add(path)
 
         ldd_lines = ldd_output.decode("utf-8").split("\n")
         for line in ldd_lines:
@@ -154,20 +220,22 @@ def aws_lambda_package(
                 lib_path = PurePosixPath(parts[2])
                 lib_paths.add(lib_path)
 
-        _, apk_output = container.exec_run(["apk", "info", "--contents", "musl"])
-        apk_lines = apk_output.decode("utf-8").split("\n")[1:]
-        for line in apk_lines:
-            stripped = line.strip()
-            if not stripped:
-                continue
-            lib_paths.add(PurePosixPath("/" + stripped))
-
         for lib_path in lib_paths:
             local_path = sysroot_path / lib_path.relative_to(lib_path.anchor)
-            zf.write(str(local_path), arcname=(lib / local_path.name).as_posix())
+            if local_path.name.startswith("ld-"):
+                lib_zinfo = get_zinfo(
+                    zf, (lib / local_path.name).as_posix(), 0o755 << 16
+                )
+            else:
+                lib_zinfo = get_zinfo(
+                    zf, (lib / local_path.name).as_posix(), 0o644 << 16
+                )
+            zf.writestr(lib_zinfo, local_path.read_bytes())
 
-        zf.write(executable_path, arcname=(bin / executable_path.name).as_posix())
+        exec_zinfo = get_zinfo(zf, (bin / executable_path.name).as_posix(), 0o755 << 16)
+        zf.writestr(exec_zinfo, executable_path.read_bytes())
         pkg_bin_filename = executable_path.name
+
         if libc:
             pkg_ld_filter = list(filter(lambda p: p.name.startswith("ld-"), lib_paths))
             if len(pkg_ld_filter) != 1:
@@ -179,15 +247,97 @@ def aws_lambda_package(
             pkg_ld = pkg_ld_filter[0]
 
             zf.writestr(
-                get_executable_zinfo(zf, "bootstrap"),
+                get_zinfo(zf, "bootstrap", 0o755 << 16),  # ?rwxrwxrwx
                 generate_libc_bootstrap_script(pkg_ld.name, pkg_bin_filename),
             )
         else:
             zf.writestr(
-                get_executable_zinfo(zf, "bootstrap"),
+                get_zinfo(zf, "bootstrap", 0o755 << 16),  # ?rwxrwxrwx
                 generate_no_libc_bootstrap_script(pkg_bin_filename),
             )
-    return zip_path
+    return zip
+
+
+def human_readable_size(size, decimal_places=2):
+    for unit in ["B", "KiB", "MiB", "GiB", "TiB", "PiB"]:
+        if size < 1024.0 or unit == "PiB":
+            break
+        size /= 1024.0
+    return f"{size:.{decimal_places}f} {unit}"
+
+
+def handle_entry_point(
+    entry_file_path: Path,
+    provided_function_name: str,
+    strip: bool,
+    deploy: bool,
+    function_role_arn: str,
+    musl_paths: set[PurePosixPath],
+):
+    if strip:
+        strip_binary(entry_file_path, project_path, container, container_root)
+    zip = aws_lambda_package(
+        entry_file_path,
+        sysroot_path,
+        project_path,
+        container,
+        container_root,
+        libc,
+        musl_paths,
+    )
+    zip_bytes = zip.getvalue()
+    zip.close()
+
+    zip_sha256 = hashlib.sha256(zip_bytes).digest()
+    zip_sha256_base64 = base64.b64encode(zip_sha256).decode("utf-8")
+    if deploy:
+        # hash & hex encode the function name to avoid issues with special characters
+        function_name = (
+            hashlib.sha256(provided_function_name.encode("utf-8")).digest().hex()
+        )
+
+        fn = None
+        try:
+            fn = aws_lambda.get_function(FunctionName=function_name)
+        except botocore.exceptions.ClientError:
+            pass
+
+        actions: List[str] = []
+        if fn is not None:
+            if fn["Configuration"]["CodeSha256"] != zip_sha256_base64:
+                actions.append("update-code")
+            if fn["Configuration"]["Role"] != function_role_arn:
+                actions.append("update-role")
+        else:
+            actions.append("create")
+
+        print(
+            "{provided_function_name}\n  Name: {function_name}\n  Sha256: {zip_sha256_base64}\n  Actions: {action}\n  Size: {size}".format(
+                provided_function_name=provided_function_name,
+                function_name=function_name,
+                zip_sha256_base64=zip_sha256_base64,
+                action=", ".join(actions) if actions else "None",
+                size=human_readable_size(len(zip_bytes)),
+            )
+        )
+
+        if "create" in actions:
+            aws_lambda.create_function(
+                FunctionName=function_name,
+                Runtime="provided",
+                Role=function_role_arn,
+                Handler="bootstrap",
+                Code={"ZipFile": zip_bytes},
+            )
+        if "update-code" in actions:
+            aws_lambda.update_function_code(
+                FunctionName=function_name, ZipFile=zip_bytes
+            )
+        if "update-role" in actions:
+            aws_lambda.update_function_configuration(
+                FunctionName=function_name,
+                Role=function_role_arn,
+            )
 
 
 container = docker_client.containers.run(
@@ -206,33 +356,27 @@ with json_path.open("r") as f:
 
 entry_points = data["entry_points"]
 with ContainerWrapper(container) as container:
+    musl_paths = get_musl_paths(container)
+
+    threads: List[Thread] = []
+    print("Deploying {} lambda functions".format(len(entry_points)))
     for entry_point in entry_points:
         entry_file_name = entry_point["filename"]
-        entry_file_path = input_path.parent / entry_file_name
-        zip_path = aws_lambda_package(
-            entry_file_path, sysroot_path, project_path, container, container_root, libc
-        )
-
-        aws_lambda: LambdaClient = boto3.client("lambda")
         provided_function_name = entry_point["user_meta"]
-        # hash & hex encode the function name to avoid issues with special characters
-        function_name = (
-            hashlib.sha256(provided_function_name.encode("utf-8")).digest().hex()
+        entry_file_path = input_path.parent / entry_file_name
+
+        thread = Thread(
+            target=handle_entry_point,
+            args=(
+                entry_file_path,
+                provided_function_name,
+                strip,
+                deploy,
+                function_role_arn,
+                musl_paths,
+            ),
         )
-        print(
-            "{function_name}: {provided_function_name}".format(
-                function_name=function_name,
-                provided_function_name=provided_function_name,
-            )
-        )
-        try:
-            aws_lambda.delete_function(FunctionName=function_name)
-        except botocore.exceptions.ClientError:
-            pass
-        aws_lambda.create_function(
-            FunctionName=function_name,
-            Runtime="provided",
-            Role="arn:aws:iam::212804181742:role/lambda-cpp-demo",
-            Handler="bootstrap",
-            Code={"ZipFile": open(zip_path, "rb").read()},
-        )
+        threads.append(thread)
+        thread.start()
+    for thread in threads:
+        thread.join()
