@@ -186,6 +186,7 @@ public:
           {
             cppless::shared_future<Res> copy(result_future);
             std::string result_string {data.begin(), data.end()};
+
             std::stringstream ss_in {result_string};
             cereal::JSONInputArchive iar {ss_in};
 

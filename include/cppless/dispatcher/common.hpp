@@ -13,8 +13,8 @@
 #include <vector>
 
 #include <cppless/utils/fdstream.hpp>
-#include <unistd.h>
 #include <sys/wait.h>
+#include <unistd.h>
 
 namespace cppless
 {
@@ -138,7 +138,7 @@ template<class InputArchive,
 auto execute(const std::string& path, In input, Callback callback)
     -> std::thread
 {
-  std::array<int, 2> parent_to_child;
+  std::array<int, 2> parent_to_child {};
   int parent_to_child_pipe_res = pipe(parent_to_child.begin());
   if (parent_to_child_pipe_res != 0) {
     throw std::runtime_error("Could not create parent->child pipe");
@@ -146,7 +146,7 @@ auto execute(const std::string& path, In input, Callback callback)
   int child_read_fd = parent_to_child[0];
   int parent_write_fd = parent_to_child[1];
 
-  std::array<int, 2> child_to_parent;
+  std::array<int, 2> child_to_parent {};
   int child_to_parent_pipe_res = pipe(child_to_parent.begin());
   if (child_to_parent_pipe_res != 0) {
     throw std::runtime_error("Could not create child->parent pipe");
@@ -198,14 +198,6 @@ auto execute(const std::string& path, In input, Callback callback)
 
   auto wait_for_result = [=]()
   {
-    // Read the result
-    cppless::fdistream child_to_parent_stream(parent_read_fd);
-
-    InputArchive iar(child_to_parent_stream);
-    //  Out result;
-    Out result;
-    iar(result);
-    // Close
     int status = 0;
     int wait_pid = waitpid(child_pid, &status, 0);
     if (wait_pid == -1) {
@@ -217,6 +209,16 @@ auto execute(const std::string& path, In input, Callback callback)
     if (WEXITSTATUS(status) != 0) {
       throw std::runtime_error("Child process exited with non-zero status");
     }
+
+    // Read the result
+    cppless::fdistream child_to_parent_stream(parent_read_fd);
+
+    InputArchive iar(child_to_parent_stream);
+    //  Out result;
+    Out result;
+    iar(result);
+    // Close
+
     close(parent_read_fd);
     callback(result);
   };

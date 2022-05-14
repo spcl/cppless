@@ -51,9 +51,10 @@ include(${CMAKE_BINARY_DIR}/conan.cmake)
 # libcurl is needed
 conan_cmake_configure(REQUIRES cereal/1.3.1
                                nlohmann_json/3.10.5
-                               libnghttp2/1.46.0
+                               libnghttp2/1.47.0
                                boost-ext-ut/1.1.8
-                               openssl/3.0.2
+                               zlib/1.2.12
+                               openssl/3.0.3
                                libcurl/7.80.0
                                argparse/2.3
                       GENERATORS cmake_find_package
@@ -118,7 +119,6 @@ FetchContent_Declare(aws-lambda-cpp
     GIT_REPOSITORY https://github.com/awslabs/aws-lambda-cpp
     GIT_TAG 2ebbf8e5759841b68709e7bd1c9d90808854a204   
 )
-message(STATUS "FetchContent_Declare(aws-lambda-cpp) ${CMAKE_CXX_FLAGS}")
 
 add_library(cppless_cppless INTERFACE)
 add_library(cppless::cppless ALIAS cppless_cppless)
@@ -156,6 +156,16 @@ add_subdirectory(tools)
 if(NOT CMAKE_SKIP_INSTALL_RULES)
   include(cmake/install-rules.cmake)
 endif()
+
+# ---- Benchmarks ----
+
+if(PROJECT_IS_TOP_LEVEL OR DEFINED CPPLESS_SERVERLESS)
+  option(BUILD_BENCHMARKS "Build benchmarks tree." "${cppless_DEVELOPER_MODE}")
+  if(BUILD_BENCHMARKS OR DEFINED CPPLESS_SERVERLESS)
+    add_subdirectory(benchmarks)
+  endif()
+endif()
+
 
 # ---- Examples ----
 

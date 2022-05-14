@@ -32,7 +32,4 @@ __attribute((weak)) auto main(int /*argc*/, char* /*argv*/[]) -> int
   builder.await_all();
 
   std::cout << m.get_value() << std::endl;
-
-  nlohmann::json j = builder.get_core();
-  std::cout << j.dump(4) << std::endl;
 }

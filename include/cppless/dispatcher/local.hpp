@@ -118,7 +118,7 @@ public:
   }
 
   template<class Lambda, class Res, class... Args>
-  static auto main(int /*argc*/, char* /*argv*/[]) -> int
+  static auto main(int /*argc*/, char* /*argv*/[]) -> int  // NOLINT
   {
     using recv = receivable_lambda<Lambda, Res, Args...>;
     using uninitialized_recv = cppless::uninitialized_data<recv>;
@@ -130,9 +130,12 @@ public:
     // the arguments into `s_args`.
     task_data<recv, Args...> t_data {u.m_self, s_args};
     iar(t_data);
+
     Res res = std::apply(u.m_self.m_lambda, s_args);
-    output_archive oar(std::cout);
-    oar(res);
+    {
+      output_archive oar(std::cout);
+      oar(res);
+    }
 
     return 0;
   }

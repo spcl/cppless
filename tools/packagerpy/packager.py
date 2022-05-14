@@ -308,6 +308,8 @@ def handle_entry_point(
                 actions.append("update-code")
             if fn["Configuration"]["Role"] != function_role_arn:
                 actions.append("update-role")
+            if fn["Configuration"]["Timeout"] != 300:
+                actions.append("update-config")
         else:
             actions.append("create")
 
@@ -328,6 +330,12 @@ def handle_entry_point(
                 Role=function_role_arn,
                 Handler="bootstrap",
                 Code={"ZipFile": zip_bytes},
+                Timeout=300,
+            )
+        if "update-config" in actions:
+            aws_lambda.update_function_configuration(
+                FunctionName=function_name,
+                Timeout=300,
             )
         if "update-code" in actions:
             aws_lambda.update_function_code(

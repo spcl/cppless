@@ -161,7 +161,7 @@ constexpr auto type_unique_name() noexcept
   constexpr size_t l = length(name);
 #endif
 
-  basic_fixed_string<char, l> s;
+  basic_fixed_string<char, l + 1> s;
   for (size_t i = 0; i < length(name); i++) {
     s[i] = name[i];
   }

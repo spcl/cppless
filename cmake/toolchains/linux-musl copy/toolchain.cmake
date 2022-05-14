@@ -25,13 +25,13 @@ set(CMAKE_SYSROOT ${SYSROOT})
 
 set(CMAKE_CPP_COMPILER_TARGET "x86_64-alpine-linux-musl")
 
-set(COMMON_FLAGS "-funwind-tables --sysroot=${SYSROOT} --prefix=/usr/local/bin/x86_64-unknown-linux-musl- --target=x86_64-alpine-linux-musl")
-set(COMPILER_FLAGS "${COMMON_FLAGS} -O3")
+set(COMMON_FLAGS "--sysroot=${SYSROOT} --prefix=/usr/local/bin/x86_64-unknown-linux-musl- --target=x86_64-alpine-linux-musl")
+set(COMPILER_FLAGS "${COMMON_FLAGS}")
 
-set(CMAKE_CXX_FLAGS "${COMPILER_FLAGS} -stdlib=libstdc++")
+set(CMAKE_CXX_FLAGS "${COMPILER_FLAGS} -stdlib=libc++")
 set(CMAKE_C_FLAGS "${COMPILER_FLAGS}")
 
-set(LINK_FLAGS "${COMMON_FLAGS} -L${ROOT_DIR}cmake/toolchains/linux-musl/sysroot/lib --gcc-toolchain=${ROOT_DIR}cmake/toolchains/linux-musl/sysroot/usr")
+set(LINK_FLAGS "${COMMON_FLAGS} -static -L${ROOT_DIR}cmake/toolchains/linux-musl/sysroot/lib --gcc-toolchain=${ROOT_DIR}cmake/toolchains/linux-musl/sysroot/usr")
 set(CMAKE_BUILD_TYPE "Debug")
 
 # these variables tell CMake to avoid using any binary it finds in 
