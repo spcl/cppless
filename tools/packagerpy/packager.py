@@ -164,8 +164,15 @@ def strip_binary(
     def local_path_to_container_path(local_path: Path) -> PurePosixPath:
         return PurePosixPath(container_root / local_path.relative_to(project_path))
 
+    stripped_executable_path = executable_path.with_name(
+        executable_path.name + ".stripped"
+    )
+    # Create copy of file
+    with executable_path.open("rb") as f:
+        with stripped_executable_path.open("wb") as g:
+            g.write(f.read())
     _, _ = container.exec_run(
-        ["strip", local_path_to_container_path(executable_path).as_posix()]
+        ["strip", local_path_to_container_path(stripped_executable_path).as_posix()]
     )
 
 

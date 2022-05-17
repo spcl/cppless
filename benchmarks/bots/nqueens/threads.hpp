@@ -1,3 +1,5 @@
+#pragma once
+
 #include <atomic>
 #include <iostream>
 #include <span>
@@ -8,16 +10,17 @@
 
 #include "./common.hpp"
 
-int main(int argc, char* argv[])
+class threads_args
 {
-  argparse::ArgumentParser program("nqueens_threads");
-  program.add_argument("prefix-length")
-      .help("The length of the prefix from which threads should be started")
-      .default_value(1)
-      .scan<'i', unsigned int>();
-  auto args = parse_args(program, argc, argv);
+public:
+  unsigned int size;
+  unsigned int prefix_length;
+};
+
+inline auto nqueens(threads_args args) -> unsigned int
+{
   auto size = args.size;
-  auto prefix_length = program.get<unsigned int>("prefix-length");
+  auto prefix_length = args.prefix_length;
 
   auto prefixes = std::vector<unsigned char>();
   prefixes.reserve(pow(size, prefix_length));
@@ -33,12 +36,11 @@ int main(int argc, char* argv[])
   std::vector<std::thread> threads;
   std::atomic<unsigned int> res;
 
-  auto num_prefixes = prefixes.size() / prefix_length;
   for (unsigned int i = 0; i < prefixes.size(); i += prefix_length) {
     std::vector<unsigned int> prefix(prefixes.begin() + i,
                                      prefixes.begin() + i + prefix_length);
     threads.emplace_back(
-        [i, prefix, size, prefix_length, &res]
+        [prefix, size, prefix_length, &res]
         {
           auto scratchpad = std::vector<unsigned char>(size);
           std::copy(prefix.begin(), prefix.end(), scratchpad.begin());
@@ -50,5 +52,5 @@ int main(int argc, char* argv[])
     t.join();
   }
 
-  std::cout << res << std::endl;
+  return res;
 }

@@ -1,3 +1,5 @@
+#pragma once
+
 #include <memory>
 #include <unordered_map>
 #include <unordered_set>
@@ -269,8 +271,6 @@ public:
         m_ready_nodes.pop_back();
 
         int future_id = node->run(m_instance);
-        std::cout << "Dispatched node " << node_id
-                  << ", future_id: " << future_id << std::endl;
 
         wait_spans.emplace(node_id, "wait");
 
@@ -296,9 +296,7 @@ public:
         break;
       }
 
-      std::cout << "Wait one" << std::endl;
       int finished = m_instance.wait_one();
-      std::cout << "Wait one done, id: " << finished << std::endl;
 
       std::size_t finished_node_id = m_future_node_map[finished];
       auto node = builder->get_node(finished_node_id);

@@ -1,8 +1,10 @@
+#pragma once
+
 #include <array>
 #include <cstdio>
+#include <cstring>
 #include <iostream>
 #include <streambuf>
-#include <cstring>
 
 #include <unistd.h>
 
@@ -118,8 +120,8 @@ protected:
      * the putback area
      */
     std::memmove(&m_buffer[static_cast<size_t>(pb_size - num_putback)],
-            gptr() - num_putback,
-            static_cast<size_t>(num_putback));
+                 gptr() - num_putback,
+                 static_cast<size_t>(num_putback));
 
     // read at most bufSize new characters
     ssize_t num = read(m_fd, &m_buffer[pb_size], buf_size);

@@ -66,6 +66,13 @@
       }
     },
     {
+      "name": "flags-macos",
+      "hidden": true,
+      "cacheVariables": {
+        "CMAKE_CXX_FLAGS": "-Wno-error=shorten-64-to-32 -stdlib=libc++ --std=c++20"
+      }
+    },
+    {
       "name": "flags-windows",
       "hidden": true,
       "cacheVariables": {
@@ -87,6 +94,15 @@
       "generator": "Visual Studio 17 2022",
       "architecture": "x64",
       "hidden": true
+    },
+    {
+      "name": "ci-macos",
+      "generator": "Unix Makefiles",
+      "hidden": true,
+      "inherits": ["flags-macos", "ci-std"],
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "Release"
+      }
     },
     {
       "name": "coverage-unix",
@@ -121,10 +137,6 @@
       "name": "ci-build",
       "binaryDir": "${sourceDir}/build",
       "hidden": true
-    },
-    {
-      "name": "ci-macos",
-      "inherits": ["ci-build", "ci-unix", "dev-mode", "conan"]
     },
     {
       "name": "ci-ubuntu",

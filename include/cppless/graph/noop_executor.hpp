@@ -1,3 +1,5 @@
+#pragma once
+
 #include <cppless/graph/graph.hpp>
 
 namespace cppless::executor

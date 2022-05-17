@@ -1,3 +1,5 @@
+#pragma once
+
 #include <set>
 #include <sstream>
 #include <string>
@@ -161,7 +163,6 @@ public:
 
       boost::algorithm::hex_lower(binary_digest,
                                   std::back_inserter(function_name));
-
       std::stringstream ss_out;
       {
         cereal::JSONOutputArchive oar(

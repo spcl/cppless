@@ -9,4 +9,7 @@ if(PROJECT_IS_TOP_LEVEL)
   find_package(cppless REQUIRED)
 endif()
 
+find_package(ut REQUIRED)
+
+add_subdirectory(knapsack)
 add_subdirectory(nqueens)
