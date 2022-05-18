@@ -69,7 +69,7 @@ auto main(int argc, char* argv[]) -> int
         auto res = knapsack(dispatcher_args {
             .items = std::get<0>(input),
             .capacity = std::get<1>(input),
-            .split = static_cast<int>(std::get<0>(input).size() - 4),
+            .split = static_cast<int>(std::get<0>(input).size() - 6),
         });
         benchmark::do_not_optimize(res);
       };

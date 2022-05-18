@@ -10,3 +10,4 @@ if(PROJECT_IS_TOP_LEVEL)
 endif()
 
 add_subdirectory(bots)
+add_subdirectory(custom)

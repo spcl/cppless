@@ -4,14 +4,25 @@
 #include <condition_variable>
 #include <future>
 #include <iostream>
+#include <iterator>
 #include <memory>
 #include <mutex>
 #include <optional>
+#include <sstream>
 #include <string>
+#include <string_view>
 #include <thread>
 #include <utility>
 #include <vector>
 
+#include <boost/algorithm/string.hpp>
+#include <boost/archive/iterators/base64_from_binary.hpp>
+#include <boost/archive/iterators/binary_from_base64.hpp>
+#include <boost/archive/iterators/transform_width.hpp>
+#include <boost/beast/core/detail/base64.hpp>
+#include <cereal/archives/binary.hpp>
+#include <cereal/archives/json.hpp>
+#include <cereal/cereal.hpp>
 #include <cppless/utils/fdstream.hpp>
 #include <sys/wait.h>
 #include <unistd.h>
@@ -226,4 +237,93 @@ auto execute(const std::string& path, In input, Callback callback)
   // return thread and future
   return t;
 }
+
+class json_structured_archive
+{
+  using input_archive = cereal::JSONInputArchive;
+  using output_archive = cereal::JSONOutputArchive;
+
+public:
+  template<class T>
+  static inline auto serialize(T t) -> std::string
+  {
+    std::stringstream ss;
+    {
+      cereal::JSONOutputArchive oar(
+          ss, cereal::JSONOutputArchive::Options::NoIndent());
+      oar(t);
+    }
+    return ss.str();
+  }
+
+  template<class T>
+  static inline auto deserialize(const std::string& s) -> T
+  {
+    std::stringstream ss(s);
+    {
+      cereal::JSONInputArchive iar(ss);
+      T t;
+      iar(t);
+      return t;
+    }
+  }
+};
+
+class json_binary_archive
+{
+  using input_archive = cereal::BinaryInputArchive;
+  using output_archive = cereal::BinaryOutputArchive;
+
+  const static auto ratio_binary = 6;
+  const static auto ratio_base64 = 8;
+  constexpr const static char* const padding = "===";
+
+public:
+  template<class T>
+  static inline auto serialize(T t) -> std::string
+  {
+    // Binary stream
+    std::stringstream bs;
+    {
+      cereal::BinaryOutputArchive oar(bs);
+      oar(t);
+    }
+    std::string s = bs.str();
+    unsigned int size = s.size();
+    auto encoded_size = boost::beast::detail::base64::encoded_size(size);
+
+    std::string encoded;
+    encoded.resize(encoded_size + 2);
+    encoded[0] = '"';
+    boost::beast::detail::base64::encode(encoded.data() + 1, s.data(), size);
+    encoded[encoded_size + 1] = '"';
+    return encoded;
+  }
+
+  template<class T>
+  static inline auto deserialize(const std::string& s) -> T
+  {
+    using base64_dec = boost::archive::iterators::transform_width<
+        boost::archive::iterators::binary_from_base64<
+            std::string::const_iterator>,
+        ratio_base64,
+        ratio_binary>;
+
+    unsigned int size = s.size();
+    auto decoded_size = boost::beast::detail::base64::decoded_size(size - 2);
+    std::string decoded;
+    decoded.resize(decoded_size);
+    boost::beast::detail::base64::decode(
+        decoded.data(), s.data() + 1, size - 2);
+
+    std::stringstream os(decoded);
+    T t;
+    {
+      cereal::BinaryInputArchive iar(os);
+      iar(t);
+    }
+    return t;
+  }
+};
+
 }  // namespace cppless
