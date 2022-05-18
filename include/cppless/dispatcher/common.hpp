@@ -15,10 +15,6 @@
 #include <utility>
 #include <vector>
 
-#include <boost/algorithm/string.hpp>
-#include <boost/archive/iterators/base64_from_binary.hpp>
-#include <boost/archive/iterators/binary_from_base64.hpp>
-#include <boost/archive/iterators/transform_width.hpp>
 #include <boost/beast/core/detail/base64.hpp>
 #include <cereal/archives/binary.hpp>
 #include <cereal/archives/json.hpp>
@@ -274,10 +270,6 @@ class json_binary_archive
   using input_archive = cereal::BinaryInputArchive;
   using output_archive = cereal::BinaryOutputArchive;
 
-  const static auto ratio_binary = 6;
-  const static auto ratio_base64 = 8;
-  constexpr const static char* const padding = "===";
-
 public:
   template<class T>
   static inline auto serialize(T t) -> std::string
@@ -303,12 +295,6 @@ public:
   template<class T>
   static inline auto deserialize(const std::string& s) -> T
   {
-    using base64_dec = boost::archive::iterators::transform_width<
-        boost::archive::iterators::binary_from_base64<
-            std::string::const_iterator>,
-        ratio_base64,
-        ratio_binary>;
-
     unsigned int size = s.size();
     auto decoded_size = boost::beast::detail::base64::decoded_size(size - 2);
     std::string decoded;
