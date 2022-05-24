@@ -15,7 +15,12 @@ auto rotate_tuple_impl(Tuple t, std::index_sequence<Is...> /*unused*/)
 template<class... Args>
 auto rotate_tuple(std::tuple<Args...> t)
 {
-  return rotate_tuple_impl(t, std::make_index_sequence<sizeof...(Args) - 1> {});
+  if constexpr (sizeof...(Args) == 0) {
+    return std::tuple<> {};
+  } else {
+    return rotate_tuple_impl(t,
+                             std::make_index_sequence<sizeof...(Args) - 1> {});
+  }
 }
 
 template<class B, class Tuple, std::size_t... Is>
