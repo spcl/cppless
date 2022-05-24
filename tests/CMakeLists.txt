@@ -11,7 +11,7 @@ if(PROJECT_IS_TOP_LEVEL)
   enable_testing()
 endif()
   
-add_executable(cppless_test source/cppless_test.cpp)
+add_executable(cppless_test source/cppless_test.cpp source/json_serialization.cpp source/tail_apply.cpp)
   
 find_package(ut REQUIRED)
 target_link_libraries(cppless_test PRIVATE boost::ut)

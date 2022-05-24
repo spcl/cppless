@@ -1,0 +1,1 @@
+void json_serialization_tests();

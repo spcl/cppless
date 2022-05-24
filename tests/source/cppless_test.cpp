@@ -1,8 +1,10 @@
-#include "cppless/cppless.hpp"
-
-#include <boost/ut.hpp>
+#include "./json_serialization.hpp"
+#include "./tail_apply.hpp"
 
 auto main() -> int
 {
-  boost::ut::expect(true);
+  json_serialization_tests();
+  tail_apply_tests();
+
+  return 0;
 }
