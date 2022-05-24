@@ -10,7 +10,7 @@
 #include "./serial.hpp"
 #include "./threads.hpp"
 
-auto main(int argc, char* argv[]) -> int
+__attribute((weak)) auto main(int argc, char* argv[]) -> int
 {
   argparse::ArgumentParser program("nqueens_bench");
   benchmark::parse_args(program, argc, argv);
@@ -32,7 +32,7 @@ auto main(int argc, char* argv[]) -> int
     {
       body = [&]
       {
-        auto res = nqueens(dispatcher_args {.size = size, .prefix_length = 2});
+        auto res = nqueens(dispatcher_args {.size = size, .prefix_length = 1});
         benchmark::do_not_optimize(res);
       };
     };
@@ -52,7 +52,7 @@ auto main(int argc, char* argv[]) -> int
     {
       body = [&]
       {
-        auto res = nqueens(graph_args {.size = size, .prefix_length = 2});
+        auto res = nqueens(graph_args {.size = size, .prefix_length = 1});
         benchmark::do_not_optimize(res);
       };
     };

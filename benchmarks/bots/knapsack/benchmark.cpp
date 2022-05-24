@@ -38,7 +38,7 @@ auto input_file_number(int x)
 
 const auto inputs = {12, 16, 20, 24, 32, 36, 40, 44, 48, 64, 96, 128};
 
-auto main(int argc, char* argv[]) -> int
+__attribute((weak)) auto main(int argc, char* argv[]) -> int
 {
   argparse::ArgumentParser program("knapsack_bench");
   benchmark::parse_args(program, argc, argv);

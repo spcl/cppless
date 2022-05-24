@@ -6,7 +6,7 @@ include(../../../cmake/project-is-top-level.cmake)
 include(../../../cmake/folders.cmake)
 include(../../../cmake/aws.cmake)
 
-add_executable("benchmark_bots_nqueens" benchmark.cpp)
+add_executable("benchmark_bots_nqueens" benchmark.cpp common.cpp dispatcher.cpp graph.cpp serial.cpp threads.cpp)
 target_link_libraries("benchmark_bots_nqueens" PRIVATE cppless::cppless)
 target_link_libraries("benchmark_bots_nqueens" PRIVATE boost::ut)
 target_compile_features("benchmark_bots_nqueens" PRIVATE cxx_std_20)

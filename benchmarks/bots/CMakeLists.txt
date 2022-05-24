@@ -11,5 +11,6 @@ endif()
 
 find_package(ut REQUIRED)
 
+add_subdirectory(floorplan)
 add_subdirectory(knapsack)
 add_subdirectory(nqueens)
