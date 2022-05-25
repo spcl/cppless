@@ -3,21 +3,27 @@
 #include <thread>
 #include <vector>
 
-#include "./threads.hpp"
+#include "./dispatcher.hpp"
+
+#include <cereal/types/array.hpp>
+#include <cereal/types/vector.hpp>
+#include <cppless/dispatcher/aws-lambda.hpp>
+#include <cppless/dispatcher/common.hpp>
 
 #include "./common.hpp"
 
-auto add_cell_threads(std::vector<std::thread>& threads,
-                      std::vector<std::future<result_data>>& futures,
-                      int cutoff,
-                      result_data& result,
-                      int id,
-                      coord prev_footprint,
-                      board_array& prev_board,
-                      std::span<cell> cells) -> void
+template<class Dispatcher>
+auto add_cell_dispatcher(
+    typename Dispatcher::instance& instance,
+    std::vector<cppless::shared_future<result_data>>& futures,
+    int cutoff,
+    result_data& result,
+    int id,
+    coord prev_footprint,
+    board_array& prev_board,
+    std::span<cell> cells) -> void
 {
   int nn = 0;
-  int nn2 = 0;
   int area = 0;
 
   board_array board;
@@ -28,7 +34,6 @@ auto add_cell_threads(std::vector<std::thread>& threads,
   for (int i = 0; i < cells[id].alt.size(); i++) {
     /* compute all possible locations for nw corner */
     nn = starts(id, i, nws, cells);
-    nn2 += nn;
     /* for all possible locations */
     std::span<coord> possible_nws {nws.data(), static_cast<std::size_t>(nn)};
     for (auto nw : possible_nws) {
@@ -63,7 +68,7 @@ auto add_cell_threads(std::vector<std::thread>& threads,
       } else if (area < result.min_area) {
         if (cutoff == 0) {
           std::vector<cell> cell_vector {cells.begin(), cells.end()};
-          std::packaged_task<result_data()> task(
+          typename Dispatcher::task::sendable task =(
               [min_area = result.min_area,
                cell_vector,
                footprint,
@@ -80,17 +85,18 @@ auto add_cell_threads(std::vector<std::thread>& threads,
 
                 return result;
               });
-          futures.push_back(task.get_future());
-          threads.emplace_back(std::move(task));
+          auto future = futures.emplace_back();
+          instance.dispatch(task, future, {});
+
         } else {
-          add_cell_threads(threads,
-                           futures,
-                           cutoff - 1,
-                           result,
-                           cells[id].next,
-                           footprint,
-                           board,
-                           cells);
+          add_cell_dispatcher<Dispatcher>(instance,
+                                          futures,
+                                          cutoff - 1,
+                                          result,
+                                          cells[id].next,
+                                          footprint,
+                                          board,
+                                          cells);
         }
         /* if area is greater than or equal to best area, prune search */
       } else {
@@ -99,8 +105,17 @@ auto add_cell_threads(std::vector<std::thread>& threads,
   }
 }
 
-auto floorplan(threads_args args) -> std::tuple<int, result_data>
+using dispatcher = cppless::dispatcher::aws_lambda_dispatcher;
+
+auto floorplan(dispatcher_args args) -> std::tuple<int, result_data>
 {
+  cppless::aws::lambda::client lambda_client;
+  auto key = lambda_client.create_derived_key_from_env();
+  dispatcher aws {"", lambda_client, key};
+  dispatcher::instance instance = aws.create_instance();
+
+  std::vector<cppless::shared_future<result_data>> futures;
+
   coord footprint;
   /* footprint of initial board is zero */
   footprint[0] = 0;
@@ -114,24 +129,20 @@ auto floorplan(threads_args args) -> std::tuple<int, result_data>
   result_data result {};
   result.min_area = rows * cols;
 
-  std::vector<std::thread> threads;
-  std::vector<std::future<result_data>> futures;
-
-  add_cell_threads(threads,
-                   futures,
-                   2,
-                   result,
-                   1,
-                   footprint,
-                   board,
-                   std::span<cell> {args.fp.cells});
-
-  for (auto& thread : threads) {
-    thread.join();
+  add_cell_dispatcher<dispatcher>(instance,
+                                  futures,
+                                  2,
+                                  result,
+                                  1,
+                                  footprint,
+                                  board,
+                                  std::span<cell> {args.fp.cells});
+  for ([[maybe_unused]] auto& f : futures) {
+    instance.wait_one();
   }
   for (auto& future : futures) {
-    result = combine(result, future.get());
+    result = combine(result, future.get_value());
   }
 
-  return {static_cast<int>(0), result};
+  return {futures.size(), result};
 }

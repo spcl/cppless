@@ -74,20 +74,6 @@ public:
   {
   }
 
-  // Copy constructor
-  shared_future(const shared_future& other)
-      : m_future(other.m_future)
-  {
-  }
-  // Copy assignment operator
-  auto operator=(const shared_future& other) -> shared_future&
-  {
-    if (this != &other) {
-      m_future = other.m_future;
-    }
-    return *this;
-  }
-
   auto set_value(const Res& res) -> void
   {
     m_future->set_value(res);

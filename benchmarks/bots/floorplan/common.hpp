@@ -31,6 +31,9 @@
 #include <tuple>
 #include <vector>
 
+#include <cereal/types/array.hpp>
+#include <cereal/types/vector.hpp>
+
 constexpr auto rows = 64;
 constexpr auto cols = 64;
 constexpr auto dmax = 64;
@@ -50,6 +53,12 @@ public:
   int left;
   int above;
   int next;
+
+  template<class Archive>
+  void serialize(Archive& ar)
+  {
+    ar(alt, top, bot, lhs, rhs, left, above, next);
+  }
 } __attribute__((aligned(cell_alignment)));
 
 class floorplan_data
@@ -57,6 +66,12 @@ class floorplan_data
 public:
   std::vector<cell> cells;
   int solution;
+
+  template<class Archive>
+  void serialize(Archive& ar)
+  {
+    ar(cells, solution);
+  }
 };
 
 class result_data
@@ -65,7 +80,15 @@ public:
   int min_area;
   board_array best_board;
   coord min_footprint;
+
+  template<class Archive>
+  void serialize(Archive& ar)
+  {
+    ar(min_area, best_board, min_footprint);
+  }
 };
+
+auto combine(const result_data& a, const result_data& b) -> result_data;
 
 auto floorplan_init(const std::string& filename) -> floorplan_data;
 auto add_cell(result_data& result,

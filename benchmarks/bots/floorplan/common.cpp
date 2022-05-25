@@ -243,6 +243,17 @@ auto add_cell(result_data& result,
   return nn2;
 }
 
+auto combine(const result_data& a, const result_data& b) -> result_data
+{
+  result_data result {};
+  if (a.min_area < b.min_area) {
+    result = a;
+  } else {
+    result = b;
+  }
+  return result;
+}
+
 auto floorplan_init(const std::string& filename) -> floorplan_data
 {
   std::fstream input_file(filename, std::fstream::in);
