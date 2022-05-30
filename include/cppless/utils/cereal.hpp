@@ -3,6 +3,7 @@
 #include <tuple>
 
 #include <cereal/cereal.hpp>
+#include <cereal/types/tuple.hpp>
 
 template<class Task, class... Args>
 class task_data

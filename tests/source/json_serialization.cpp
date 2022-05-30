@@ -18,9 +18,9 @@ void json_serialization_tests()
         something.push_back(i);
       }
       auto encoded = cppless::json_binary_archive::serialize(something);
-      auto decoded =
-          cppless::json_binary_archive::deserialize<decltype(something)>(
-              encoded);
+
+      std::vector<unsigned int> decoded;
+      cppless::json_binary_archive::deserialize(encoded, decoded);
 
       expect(something == decoded);
     };
@@ -48,9 +48,8 @@ void json_serialization_tests()
         something.push_back(i);
       }
       auto encoded = cppless::json_structured_archive::serialize(something);
-      auto decoded =
-          cppless::json_structured_archive::deserialize<decltype(something)>(
-              encoded);
+      std::vector<unsigned int> decoded;
+      cppless::json_structured_archive::deserialize(encoded, decoded);
 
       expect(something == decoded);
     };

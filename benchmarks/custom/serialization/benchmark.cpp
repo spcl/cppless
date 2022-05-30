@@ -82,9 +82,8 @@ auto main(int argc, char* argv[]) -> int
     auto encoded = cppless::json_binary_archive::serialize(something);
     body = [&]
     {
-      auto decoded =
-          cppless::json_binary_archive::deserialize<std::vector<some_data>>(
-              encoded);
+      std::vector<some_data> decoded;
+      cppless::json_binary_archive::deserialize(encoded, decoded);
       benchmark::do_not_optimize(decoded);
     };
   };
@@ -102,9 +101,9 @@ auto main(int argc, char* argv[]) -> int
     auto encoded = cppless::json_structured_archive::serialize(something);
     body = [&]
     {
-      auto decoded =
-          cppless::json_structured_archive::deserialize<std::vector<some_data>>(
-              encoded);
+      std::vector<some_data> decoded;
+
+      cppless::json_structured_archive::deserialize(encoded, decoded);
       benchmark::do_not_optimize(decoded);
     };
   };

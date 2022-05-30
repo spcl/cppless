@@ -41,6 +41,13 @@ public:
   // Delete copy assignment operator
   auto operator=(const future&) -> future& = delete;
 
+  // Delete move constructor
+  future(future&&) = delete;
+
+  auto operator=(future&&) = delete;
+
+  ~future() = default;
+
   auto set_value(const Res& res) -> void
   {
     m_res = res;
@@ -222,48 +229,45 @@ auto execute(const std::string& path, In input, Callback callback)
 
 class json_structured_archive
 {
+public:
   using input_archive = cereal::JSONInputArchive;
   using output_archive = cereal::JSONOutputArchive;
 
-public:
   template<class T>
   static inline auto serialize(T t) -> std::string
   {
     std::stringstream ss;
     {
-      cereal::JSONOutputArchive oar(
-          ss, cereal::JSONOutputArchive::Options::NoIndent());
+      output_archive oar(ss, output_archive::Options::NoIndent());
       oar(t);
     }
     return ss.str();
   }
 
   template<class T>
-  static inline auto deserialize(const std::string& s) -> T
+  static inline auto deserialize(const std::string& s, T& t)
   {
     std::stringstream ss(s);
     {
-      cereal::JSONInputArchive iar(ss);
-      T t;
+      input_archive iar(ss);
       iar(t);
-      return t;
     }
   }
 };
 
 class json_binary_archive
 {
+public:
   using input_archive = cereal::BinaryInputArchive;
   using output_archive = cereal::BinaryOutputArchive;
 
-public:
   template<class T>
   static inline auto serialize(T t) -> std::string
   {
     // Binary stream
     std::stringstream bs;
     {
-      cereal::BinaryOutputArchive oar(bs);
+      output_archive oar(bs);
       oar(t);
     }
     std::string s = bs.str();
@@ -279,7 +283,7 @@ public:
   }
 
   template<class T>
-  static inline auto deserialize(const std::string& s) -> T
+  static inline auto deserialize(const std::string& s, T& t) -> void
   {
     unsigned int size = s.size();
     auto decoded_size = boost::beast::detail::base64::decoded_size(size - 2);
@@ -289,12 +293,10 @@ public:
         decoded.data(), s.data() + 1, size - 2);
 
     std::stringstream os(decoded);
-    T t;
     {
-      cereal::BinaryInputArchive iar(os);
+      input_archive iar(os);
       iar(t);
     }
-    return t;
   }
 };
 

@@ -53,7 +53,7 @@ inline auto knapsack_dispatcher(
   }
 }
 
-using dispatcher = cppless::dispatcher::aws_lambda_dispatcher;
+using dispatcher = cppless::dispatcher::aws_lambda_dispatcher<>;
 
 auto knapsack(dispatcher_args args) -> int
 {

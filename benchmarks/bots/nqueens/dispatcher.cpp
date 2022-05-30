@@ -12,7 +12,7 @@
 
 #include "./common.hpp"
 
-using dispatcher = cppless::dispatcher::aws_lambda_dispatcher;
+using dispatcher = cppless::dispatcher::aws_lambda_dispatcher<>;
 
 auto nqueens(dispatcher_args args) -> unsigned int
 {

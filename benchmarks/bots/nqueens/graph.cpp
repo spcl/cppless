@@ -22,7 +22,7 @@ public:
 auto nqueens(graph_args args) -> unsigned int
 {
   using cppless::execution::schedule, cppless::execution::then;
-  using dispatcher = cppless::dispatcher::aws_lambda_dispatcher;
+  using dispatcher = cppless::dispatcher::aws_lambda_dispatcher<>;
   using executor = cppless::executor::host_controller_executor<dispatcher>;
 
   auto size = args.size;

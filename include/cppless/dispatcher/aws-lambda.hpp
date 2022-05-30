@@ -21,11 +21,12 @@
 namespace cppless::dispatcher
 {
 
+template<class Archive = json_binary_archive>
 class aws_lambda_dispatcher
 {
 public:
-  using input_archive = cereal::JSONInputArchive;
-  using output_archive = cereal::JSONOutputArchive;
+  using input_archive = typename Archive::input_archive;
+  using output_archive = typename Archive::output_archive;
 
   using task = cppless::task<aws_lambda_dispatcher>;
   template<class T>
@@ -51,23 +52,17 @@ public:
     ::aws::lambda_runtime::run_handler(
         [](invocation_request const& request)
         {
-          std::stringstream ss_in {request.payload};
-          cereal::JSONInputArchive iar {ss_in};
           uninitialized_recv u;
           std::tuple<Args...> s_args;
           // task_data takes both of its constructor arguments by reference,
           // thus deserializing into `t_data` will populate the context into
           // `m_self` and the arguments into `s_args`.
           task_data<recv, Args...> t_data {u.m_self, s_args};
-          iar(t_data);
-          std::stringstream ss_out;
-          {
-            Res res = std::apply(u.m_self.m_lambda, s_args);
-            cereal::JSONOutputArchive oar(
-                ss_out, cereal::JSONOutputArchive::Options::NoIndent());
-            oar(res);
-          }
-          return invocation_response::success(ss_out.str(), "application/json");
+          Archive::deserialize(request.payload, t_data);
+          Res res = std::apply(u.m_self.m_lambda, s_args);
+
+          return invocation_response::success(Archive::serialize(res),
+                                              "application/json");
         });
     return 0;
   }
@@ -163,15 +158,9 @@ public:
 
       boost::algorithm::hex_lower(binary_digest,
                                   std::back_inserter(function_name));
-      std::stringstream ss_out;
-      {
-        cereal::JSONOutputArchive oar(
-            ss_out, cereal::JSONOutputArchive::Options::NoIndent());
-        specialized_task_data data {t, args};
-        oar(data);
-      }
 
-      auto string_payload = ss_out.str();
+      specialized_task_data data {t, args};
+      auto string_payload = Archive::serialize(data);
       std::vector<unsigned char> payload(string_payload.begin(),
                                          string_payload.end());
       std::unique_ptr<cppless::aws::lambda::invocation_request> req =
@@ -188,12 +177,8 @@ public:
             cppless::shared_future<Res> copy(result_future);
             std::string result_string {data.begin(), data.end()};
 
-            std::stringstream ss_in {result_string};
-            cereal::JSONInputArchive iar {ss_in};
-
             Res result;
-
-            iar(result);
+            Archive::deserialize(result_string, result);
 
             copy.set_value(result);
             m_finished.insert(id);

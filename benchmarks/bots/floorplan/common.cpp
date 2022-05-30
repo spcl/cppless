@@ -99,7 +99,7 @@ auto starts(int id, int shape, std::span<coord> nws, std::span<cell> cells)
     }
   }
 
-  return (n);
+  return n;
 }
 
 /* lay the cell down on the board in the rectangular space defined

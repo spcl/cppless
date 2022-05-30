@@ -105,7 +105,7 @@ auto add_cell_dispatcher(
   }
 }
 
-using dispatcher = cppless::dispatcher::aws_lambda_dispatcher;
+using dispatcher = cppless::dispatcher::aws_lambda_dispatcher<>;
 
 auto floorplan(dispatcher_args args) -> std::tuple<int, result_data>
 {
