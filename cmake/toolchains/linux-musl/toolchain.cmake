@@ -29,7 +29,8 @@ set(COMMON_FLAGS "-funwind-tables --sysroot=${SYSROOT} --prefix=/usr/local/bin/x
 set(COMPILER_FLAGS "${COMMON_FLAGS} -O3")
 
 set(CMAKE_CXX_FLAGS "${COMPILER_FLAGS} -stdlib=libstdc++")
-set(CMAKE_C_FLAGS "${COMPILER_FLAGS}")
+# Convince libcurl that the target platform has socket and fcntl_o_nonblock
+set(CMAKE_C_FLAGS "${COMPILER_FLAGS} -DHAVE_SOCKET -DHAVE_FCNTL_O_NONBLOCK")
 
 set(LINK_FLAGS "${COMMON_FLAGS} -L${ROOT_DIR}cmake/toolchains/linux-musl/sysroot/lib --gcc-toolchain=${ROOT_DIR}cmake/toolchains/linux-musl/sysroot/usr")
 set(CMAKE_BUILD_TYPE "Debug")
