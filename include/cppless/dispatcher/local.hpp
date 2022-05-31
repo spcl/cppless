@@ -77,13 +77,30 @@ template<class InputArchive, class OutputArchive>
 class local_dispatcher
 {
 public:
+  using default_config = void;
   using input_archive = InputArchive;
   using output_archive = OutputArchive;
 
+  template<class... Modifiers>
   using task =
       typename cppless::task<local_dispatcher<input_archive, output_archive>>;
   template<class T>
-  using sendable_task = typename task::template sendable<T>;
+  using sendable_task = typename task<>::template sendable<T>;
+
+  template<class Config>
+  struct meta_serializer
+  {
+    template<unsigned int N>
+    constexpr static auto serialize(basic_fixed_string<char, N> identifier)
+    {
+      return identifier;
+    }
+
+    static auto identifier(const std::string& identifier) -> std::string
+    {
+      return identifier;
+    }
+  };
 
   /**
    * @brief Construct a new local dispatcher object
@@ -198,13 +215,12 @@ public:
      * @param args - The arguments with which the invocation should occur
      * @return int - The id of the invocation
      */
-    template<class Res, class... Args>
-    auto dispatch(sendable_task<Res(Args...)>& t,
+    template<class TaskType, class Res, class... Args>
+    auto dispatch(TaskType& t,
                   cppless::shared_future<Res> result_future,
                   std::tuple<Args...> args) -> int
     {
-      using specialized_task_data =
-          task_data<sendable_task<Res(Args...)>, Args...>;
+      using specialized_task_data = task_data<TaskType, Args...>;
 
       // Get the function name
       auto function_name = t.identifier();
