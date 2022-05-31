@@ -6,6 +6,8 @@
 #include <cppless/utils/apply.hpp>
 #include <cppless/utils/tuple.hpp>
 
+#include "cppless/detail/deduction.hpp"
+
 namespace cppless::execution
 {
 
@@ -93,7 +95,7 @@ auto then_connect(
   }
 }
 
-template<class... Args>
+template<class CustomTaskType = void, class... Args>
 auto then(Args... args)
 {
   return tail_apply(
@@ -102,7 +104,10 @@ auto then(Args... args)
           std::shared_ptr<FirstSenderType> first_sender,
           RestSenderTypes... rest_senders) {
         using executor = typename FirstSenderType::executor;
-        typename executor::task::sendable input_task(input_thing);
+        typename std::conditional<std::is_void<CustomTaskType>::value,
+                                  typename executor::task,
+                                  CustomTaskType>::type::sendable
+            input_task(input_thing);
 
         auto builder = first_sender->get_builder();
         std::shared_ptr<graph::task_node<executor, decltype(input_task)>>

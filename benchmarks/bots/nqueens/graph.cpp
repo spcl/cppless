@@ -12,6 +12,15 @@
 
 #include "./common.hpp"
 
+using dispatcher = cppless::dispatcher::aws_lambda_dispatcher<>;
+using executor = cppless::executor::host_controller_executor<dispatcher>;
+namespace lambda = cppless::dispatcher::aws;
+constexpr unsigned int memory_limit = 2048;
+constexpr unsigned int ephemeral_storage = 64;
+using cpu_intensive_task =
+    dispatcher::task<lambda::with_memory<memory_limit>,
+                     lambda::with_ephemeral_storage<ephemeral_storage>>;
+
 class graph_args
 {
 public:
@@ -22,8 +31,6 @@ public:
 auto nqueens(graph_args args) -> unsigned int
 {
   using cppless::execution::schedule, cppless::execution::then;
-  using dispatcher = cppless::dispatcher::aws_lambda_dispatcher<>;
-  using executor = cppless::executor::host_controller_executor<dispatcher>;
 
   auto size = args.size;
   auto prefix_length = args.prefix_length;
@@ -57,7 +64,7 @@ auto nqueens(graph_args args) -> unsigned int
       std::copy(prefix.begin(), prefix.end(), scratchpad.begin());
       return nqueens_serial(prefix_length, scratchpad);
     };
-    futures.push_back(then(start, task)->get_future());
+    futures.push_back(then<cpu_intensive_task>(start, task)->get_future());
   }
   builder.await_all();
   unsigned int res = 0;
