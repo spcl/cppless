@@ -19,7 +19,10 @@ class host_controller_executor
   using executor_type = host_controller_executor<Dispatcher>;
 
 public:
-  using task = typename Dispatcher::task;
+  using task = typename Dispatcher::template task<>;
+
+  template<class Config>
+  using custom_task = typename Dispatcher::template task<Config>;
 
   class node_core : public graph::basic_node_core<executor_type>
   {

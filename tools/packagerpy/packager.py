@@ -11,6 +11,7 @@ import zipfile
 from pathlib import Path, PurePosixPath
 from threading import Thread
 from typing import List
+from encoding import decode_value
 
 import boto3
 import botocore.exceptions
@@ -82,6 +83,14 @@ parser.add_argument(
     required=False,
     default="",
 )
+parser.add_argument(
+    "-t",
+    "--target-name",
+    metavar="target-name",
+    type=str,
+    help="The target name to use.",
+    required=True,
+)
 
 some_time = datetime.utcfromtimestamp(420000000)
 
@@ -95,6 +104,7 @@ libc = args.libc
 strip = args.strip
 deploy = args.deploy
 function_role_arn = args.function_role_arn
+target_name = args.target_name
 
 container_root = PurePosixPath("/usr/src/project/")
 aws_lambda: LambdaClient = boto3.client("lambda")
@@ -275,7 +285,7 @@ def human_readable_size(size, decimal_places=2):
 
 def handle_entry_point(
     entry_file_path: Path,
-    provided_function_name: str,
+    user_meta: dict,
     strip: bool,
     deploy: bool,
     function_role_arn: str,
@@ -298,10 +308,24 @@ def handle_entry_point(
     zip_sha256 = hashlib.sha256(zip_bytes).digest()
     zip_sha256_base64 = base64.b64encode(zip_sha256).decode("utf-8")
     if deploy:
+        identifier: str = user_meta["identifier"]
+        ephemeral_storage: int = user_meta["ephemeral_storage"]
+        memory: int = user_meta["memory"]
+        timeout: int = user_meta["timeout"]
+
+        hash = hashlib.sha256()
+        hash.update(identifier.encode("utf-8"))
+        hash.update("#".encode("utf-8"))
+        hash.update(str(ephemeral_storage).encode("utf-8"))
+        hash.update("#".encode("utf-8"))
+        hash.update(str(memory).encode("utf-8"))
+        hash.update("#".encode("utf-8"))
+        hash.update(str(timeout).encode("utf-8"))
+
         # hash & hex encode the function name to avoid issues with special characters
-        function_name = (
-            hashlib.sha256(provided_function_name.encode("utf-8")).digest().hex()
-        )
+        function_name = target_name + "-" + hash.digest().hex()[:8]
+
+        print(function_name)
 
         fn = None
         try:
@@ -315,14 +339,20 @@ def handle_entry_point(
                 actions.append("update-code")
             if fn["Configuration"]["Role"] != function_role_arn:
                 actions.append("update-role")
-            if fn["Configuration"]["Timeout"] != 300:
+
+            if fn["Configuration"]["Timeout"] != timeout:
                 actions.append("update-config")
+            elif fn["Configuration"]["MemorySize"] != memory:
+                actions.append("update-config")
+            # elif fn["Configuration"]["EphemeralStorage"]["Size"] != ephemeral_storage:
+            #    actions.append("update-config")
+
         else:
             actions.append("create")
 
         print(
             "{provided_function_name}\n  Name: {function_name}\n  Sha256: {zip_sha256_base64}\n  Actions: {action}\n  Size: {size}".format(
-                provided_function_name=provided_function_name,
+                provided_function_name=identifier,
                 function_name=function_name,
                 zip_sha256_base64=zip_sha256_base64,
                 action=", ".join(actions) if actions else "None",
@@ -337,12 +367,16 @@ def handle_entry_point(
                 Role=function_role_arn,
                 Handler="bootstrap",
                 Code={"ZipFile": zip_bytes},
-                Timeout=300,
+                Timeout=timeout,
+                MemorySize=memory,
+                # EphemeralStorage={"Size": ephemeral_storage} aws_lambda.,
             )
         if "update-config" in actions:
             aws_lambda.update_function_configuration(
                 FunctionName=function_name,
-                Timeout=300,
+                Timeout=timeout,
+                MemorySize=memory,
+                # EphemeralStorage={"Size": ephemeral_storage},
             )
         if "update-code" in actions:
             aws_lambda.update_function_code(
@@ -377,14 +411,20 @@ with ContainerWrapper(container) as container:
     print("Deploying {} lambda functions".format(len(entry_points)))
     for entry_point in entry_points:
         entry_file_name = entry_point["filename"]
-        provided_function_name = entry_point["user_meta"]
+        user_meta_encoded = entry_point["user_meta"]
+
+        user_meta_binary = io.BytesIO(base64.b64decode(user_meta_encoded))
+        user_meta = decode_value(user_meta_binary)
+
+        print(user_meta)
+
         entry_file_path = input_path.parent / entry_file_name
 
         thread = Thread(
             target=handle_entry_point,
             args=(
                 entry_file_path,
-                provided_function_name,
+                user_meta,
                 strip,
                 deploy,
                 function_role_arn,

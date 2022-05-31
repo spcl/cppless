@@ -15,6 +15,7 @@ function(aws_lambda_package_target target)
         "--sysroot" ${SYSROOT}
         "--project" ${CMAKE_BINARY_DIR}
         "--image" ${DOCKER_IMAGE}
+        "--target-name" ${target}
         "--strip"
         "--deploy"
         "--function-role-arn" ${AWS_LAMBDA_FUNCTION_ROLE_ARN}
@@ -46,6 +47,8 @@ function(aws_lambda_target NAME)
 
     find_package(CURL REQUIRED)
     target_link_libraries("${NAME}" PRIVATE CURL::libcurl)
+
+    target_compile_definitions("${NAME}" PRIVATE "TARGET_NAME=\"${NAME}\"")
 endfunction()
 
 

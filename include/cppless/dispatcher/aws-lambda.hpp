@@ -16,21 +16,94 @@
 #include <cppless/provider/aws/auth.hpp>
 #include <cppless/provider/aws/lambda.hpp>
 #include <cppless/utils/crypto/wrappers.hpp>
+#include <cppless/utils/fixed_string.hpp>
+#include <cppless/utils/fixed_string_serialization.hpp>
 #include <cppless/utils/uninitialized.hpp>
+
+#ifndef TARGET_NAME
+#  define TARGET_NAME "cppless"  // NOLINT
+#endif
 
 namespace cppless::dispatcher
 {
+
+namespace aws
+{
+
+struct default_config
+{
+  constexpr static std::string_view description;
+  constexpr static unsigned int memory = 1024;  // MB
+  constexpr static unsigned int ephemeral_storage = 512;  // MB
+  constexpr static unsigned int timeout = 60 * 5;  // seconds
+};
+
+template<class A, A Description>
+struct with_description
+{
+  template<class Base>
+  struct apply : public Base
+  {
+    constexpr static A description = Description;
+  };
+};
+
+template<unsigned int Memory>
+struct with_memory
+{
+  template<class Base>
+  struct apply : public Base
+  {
+    constexpr static unsigned int memory = Memory;
+  };
+};
+
+template<unsigned int EphemeralStorage>
+struct with_ephemeral_storage
+{
+  template<class Base>
+  struct apply : public Base
+  {
+    constexpr static unsigned int ephemeral_storage = EphemeralStorage;
+  };
+};
+
+template<unsigned int Timeout>
+class with_timeout
+{
+  template<class Base>
+  class apply : public Base
+  {
+    constexpr static unsigned int timeout = Timeout;
+  };
+};
+
+template<class... Modifiers>
+class config;
+
+template<class Modifier, class... Modifiers>
+class config<Modifier, Modifiers...>
+    : public Modifier::template apply<config<Modifiers...>>
+{
+};
+
+template<>
+class config<> : public default_config
+{
+};
+
+}  // namespace aws
 
 template<class Archive = json_binary_archive>
 class aws_lambda_dispatcher
 {
 public:
+  using default_config = aws::config<>;
   using input_archive = typename Archive::input_archive;
   using output_archive = typename Archive::output_archive;
 
-  using task = cppless::task<aws_lambda_dispatcher>;
-  template<class T>
-  using sendable_task = typename task::template sendable<T>;
+  template<class... Modifiers>
+  using task = cppless::task<aws_lambda_dispatcher, aws::config<Modifiers...>>;
 
   explicit aws_lambda_dispatcher(std::string prefix,
                                  cppless::aws::lambda::client client,
@@ -40,6 +113,29 @@ public:
       , m_key(std::move(key))
   {
   }
+
+  template<class Config>
+  struct meta_serializer
+  {
+    template<unsigned int N>
+    constexpr static auto serialize(basic_fixed_string<char, N> identifier)
+    {
+      using namespace cppless;  // NOLINT
+      return cppless::encode_base64(cppless::serialize(
+          map(kv("ephemeral_storage", Config::ephemeral_storage),
+              kv("memory", Config::memory),
+              kv("timeout", Config::timeout),
+              kv("identifier", identifier))));
+    }
+
+    static auto identifier(const std::string& identifier) -> std::string
+    {
+      std::stringstream ss;
+      ss << identifier << "#" << Config::ephemeral_storage << "#"
+         << Config::memory << "#" << Config::timeout;
+      return ss.str();
+    }
+  };
 
   template<class Lambda, class Res, class... Args>
   static auto main(int /*argc*/, char* /*argv*/[]) -> int
@@ -139,25 +235,30 @@ public:
       return *this;
     }
 
-    template<class Res, class... Args>
-    auto dispatch(sendable_task<Res(Args...)>& t,
+    template<class TaskType, class Res, class... Args>
+    auto dispatch(TaskType& t,
                   cppless::shared_future<Res> result_future,
                   std::tuple<Args...> args) -> int
     {
-      using specialized_task_data =
-          task_data<sendable_task<Res(Args...)>, Args...>;
+      using specialized_task_data = task_data<TaskType, Args...>;
 
       int id = m_next_id++;
 
       auto raw_function_name = t.identifier();
-      std::string function_name;
+
+      std::string function_name = TARGET_NAME;
+      function_name += "-";
 
       evp_md_ctx ctx;
       ctx.update(raw_function_name);
       auto binary_digest = ctx.final();
 
+      std::string function_hex;
       boost::algorithm::hex_lower(binary_digest,
-                                  std::back_inserter(function_name));
+                                  std::back_inserter(function_hex));
+
+      // First 8 chars
+      function_name += function_hex.substr(0, 8);
 
       specialized_task_data data {t, args};
       auto string_payload = Archive::serialize(data);

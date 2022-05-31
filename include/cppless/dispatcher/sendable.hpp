@@ -50,7 +50,7 @@ public:
   Lambda m_lambda;
 };
 
-template<class Dispatcher>
+template<class Dispatcher, class Config = typename Dispatcher::default_config>
 struct task
 {
   using input_archive = typename Dispatcher::input_archive;
@@ -84,11 +84,14 @@ struct task
 
     auto identifier() -> std::string override
     {
-      return function_identifier<Lambda, Args...>().str();
+      return Dispatcher::template meta_serializer<Config>::identifier(
+          function_identifier<Lambda, Args...>().str());
     }
 
-    __attribute((entry))
-    __attribute((meta(function_identifier<Lambda, Args...>()))) static auto
+    __attribute((entry)) __attribute((
+        meta(Dispatcher::template meta_serializer<Config>::template serialize<
+             function_identifier<Lambda, Args...>().size() + 1>(
+            function_identifier<Lambda, Args...>())))) static auto
     main(int argc, char* argv[]) -> int
     {
       return Dispatcher::template main<Lambda, Res, Args...>(argc, argv);

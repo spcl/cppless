@@ -13,6 +13,12 @@
 #include "./common.hpp"
 
 using dispatcher = cppless::dispatcher::aws_lambda_dispatcher<>;
+namespace lambda = cppless::dispatcher::aws;
+constexpr unsigned int memory_limit = 2048;
+constexpr unsigned int ephemeral_storage = 64;
+using cpu_intensive_task =
+    dispatcher::task<lambda::with_memory<memory_limit>,
+                     lambda::with_ephemeral_storage<ephemeral_storage>>;
 
 auto nqueens(dispatcher_args args) -> unsigned int
 {
@@ -40,7 +46,7 @@ auto nqueens(dispatcher_args args) -> unsigned int
   for (unsigned int i = 0; i < prefixes.size(); i += prefix_length) {
     std::vector<unsigned int> prefix(prefixes.begin() + i,
                                      prefixes.begin() + i + prefix_length);
-    dispatcher::task::sendable task = [prefix, size]
+    cpu_intensive_task::sendable task = [prefix, size]
     {
       auto scratchpad = std::vector<unsigned char>(size);
       std::copy(prefix.begin(), prefix.end(), scratchpad.begin());
