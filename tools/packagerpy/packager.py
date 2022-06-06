@@ -184,6 +184,7 @@ def strip_binary(
     _, _ = container.exec_run(
         ["strip", local_path_to_container_path(stripped_executable_path).as_posix()]
     )
+    return stripped_executable_path
 
 
 def get_musl_paths(container: Container):
@@ -291,10 +292,13 @@ def handle_entry_point(
     function_role_arn: str,
     musl_paths: set[PurePosixPath],
 ):
+    executable_path = entry_file_path
     if strip:
-        strip_binary(entry_file_path, project_path, container, container_root)
+        executable_path = strip_binary(
+            entry_file_path, project_path, container, container_root
+        )
     zip = aws_lambda_package(
-        entry_file_path,
+        executable_path,
         sysroot_path,
         project_path,
         container,
