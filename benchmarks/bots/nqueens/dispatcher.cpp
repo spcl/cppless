@@ -9,6 +9,8 @@
 #include <cereal/types/vector.hpp>
 #include <cppless/dispatcher/aws-lambda.hpp>
 #include <cppless/dispatcher/common.hpp>
+#include <cppless/utils/tracing.hpp>
+#include <nlohmann/json.hpp>
 
 #include "./common.hpp"
 
@@ -41,7 +43,9 @@ auto nqueens(dispatcher_args args) -> unsigned int
                    std::span<unsigned char> {scratchpad},
                    prefixes);
 
-  std::vector<cppless::shared_future<unsigned int>> futures;
+  std::vector<cppless::shared_future<unsigned int>> futures(prefixes.size());
+  std::vector<std::vector<cppless::tracing_span>> span_containers(
+      prefixes.size());
 
   for (unsigned int i = 0; i < prefixes.size(); i += prefix_length) {
     std::vector<unsigned int> prefix(prefixes.begin() + i,
@@ -52,7 +56,8 @@ auto nqueens(dispatcher_args args) -> unsigned int
       std::copy(prefix.begin(), prefix.end(), scratchpad.begin());
       return nqueens_serial(prefix.size(), scratchpad);
     };
-    instance.dispatch(task, futures.emplace_back(), {});
+    std::vector<cppless::tracing_span>& span_container = span_containers[i];
+    instance.dispatch(task, futures.emplace_back(), {}, span_container);
   }
   for ([[maybe_unused]] auto& f : futures) {
     instance.wait_one();
@@ -60,6 +65,11 @@ auto nqueens(dispatcher_args args) -> unsigned int
   unsigned int res = 0;
   for (auto& f : futures) {
     res += f.get_value();
+  }
+
+  for (auto& span_container : span_containers) {
+    nlohmann::json j = span_container;
+    std::cout << j.dump(2) << std::endl;
   }
 
   return res;

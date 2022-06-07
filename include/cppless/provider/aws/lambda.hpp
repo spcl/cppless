@@ -6,13 +6,16 @@
 #include <utility>
 #include <vector>
 
+#include <boost/beast/http.hpp>
+#include <boost/beast/http/message.hpp>
+#include <boost/beast/http/string_body.hpp>
 #include <cppless/provider/aws/client.hpp>
 #include <cppless/utils/crypto/hmac.hpp>
+#include <cppless/utils/crypto/wrappers.hpp>
 #include <cppless/utils/time.hpp>
 #include <cppless/utils/url.hpp>
 #include <nghttp2/asio_http2_client.h>
 
-#include "cppless/utils/crypto/wrappers.hpp"
 namespace cppless::aws::lambda
 {
 
@@ -26,20 +29,20 @@ public:
   }
 };
 
-class invocation_request
-    : public request<invocation_request, std::vector<unsigned char>>
+template<class Base>
+class base_invocation_request : public Base
 {
 public:
-  invocation_request()
+  base_invocation_request()
   {
     auto now = std::chrono::system_clock::now();
     m_date = format_aws_date(now);
   }
 
-  explicit invocation_request(
+  explicit base_invocation_request(
       std::string function_name,
       std::string qualifier,
-      std::vector<unsigned char> payload = std::vector<unsigned char> {},
+      std::string payload = "",
       std::string date = format_aws_date(std::chrono::system_clock::now()))
       : m_date(std::move(date))
       , m_function_name(std::move(function_name))
@@ -52,8 +55,7 @@ private:
   std::string m_date;
   std::string m_function_name;
   std::string m_qualifier;
-  std::vector<unsigned char> m_payload = {};
-  std::vector<unsigned char> m_result = {};
+  std::string m_payload = {};
 
 public:
   [[nodiscard]] auto get_date() const -> std::string
@@ -79,7 +81,25 @@ public:
   {
     return "Qualifier=" + m_qualifier;
   }
+  [[nodiscard]] auto get_payload_hash() const -> std::vector<unsigned char>
+  {
+    evp_md_ctx ctx;
+    ctx.update({m_payload.begin(), m_payload.end()});
+    return ctx.final();
+  }
 
+  [[nodiscard]] auto get_payload() const -> std::string
+  {
+    return m_payload;
+  }
+};
+
+class nghttp2_invocation_request
+    : public base_invocation_request<
+          nghttp2_request<nghttp2_invocation_request, std::string>>
+{
+public:
+  using base_invocation_request::base_invocation_request;
   auto on_http2_response(const nghttp2::asio_http2::client::response& res)
       -> void
   {
@@ -103,21 +123,33 @@ public:
         {
           m_result.insert(m_result.end(), &data[0], &data[len]);  // NOLINT
           if (len == 0) {
-            m_result_callback(m_result);
+            m_result_callback(std::string {m_result.begin(), m_result.end()});
           }
         });
   }
 
-  [[nodiscard]] auto get_payload_hash() const -> std::vector<unsigned char>
-  {
-    evp_md_ctx ctx;
-    ctx.update({m_payload.cbegin(), m_payload.cend()});
-    return ctx.final();
-  }
+private:
+  std::vector<unsigned char> m_result = {};
+};
 
-  [[nodiscard]] auto get_payload() const -> std::string
+class beast_invocation_request
+    : public base_invocation_request<
+          beast_request<beast_invocation_request, std::string>>
+{
+public:
+  using base_invocation_request::base_invocation_request;
+  auto on_http1_response(
+      const boost::beast::http::response<boost::beast::http::string_body>& res)
+      -> void
   {
-    return {m_payload.cbegin(), m_payload.cend()};
+    if (res.result() != boost::beast::http::status::ok) {
+      std::cerr << "status_code: " << res.result() << std::endl;
+      std::cerr << "body: " << res.body() << std::endl;
+
+      return;
+    }
+
+    m_result_callback(res.body());
   }
 };
 

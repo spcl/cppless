@@ -13,7 +13,7 @@ namespace benchmark
 {
 
 auto dry_run = false;
-const auto min_time = 1000000000;
+const long long min_time = 1000000000UL;  // 1 second
 
 auto parse_args(argparse::ArgumentParser& program, int argc, char** argv)
     -> std::tuple<std::string>
@@ -197,6 +197,11 @@ struct benchmark : boost::ut::detail::test
       }
 
       std::clog << ")\n";
+
+      for (auto const& x : times) {
+        std::clog << x.count() << " ";
+      }
+      std::clog << "\n";
     };
   }
 

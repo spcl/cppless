@@ -1,53 +1,48 @@
 #include <cstdlib>
 #include <iostream>
+#include <memory>
 #include <vector>
 
 #include <argparse/argparse.hpp>
 #include <cppless/provider/aws/lambda.hpp>
-#include <nghttp2/asio_http2_client.h>
+#include <cppless/utils/beast/http_request_session.hpp>
+#include <cppless/utils/tracing.hpp>
+#include <nlohmann/json.hpp>
 
 auto main(int argc, char* argv[]) -> int
 {
-  std::string function_name =
-      "08bc8655b2ed3089d721cbc0dea657c80c41cde71f8c69131d06b5d299ec8044";
+  std::string function_name = "echo";
   std::string qualifier = "$LATEST";
-  std::string payload = R"({"value0":{"context":{"value0":-1},"args":{}}})";
+  std::string payload = R"({"test":42})";
 
   cppless::aws::lambda::client lambda_client;
   auto key = lambda_client.create_derived_key_from_env();
 
+  boost::asio::io_context ioc;
+
   boost::system::error_code ec;
-  boost::asio::io_service io_service;
-
-  boost::asio::ssl::context tls(boost::asio::ssl::context::sslv23);
+  boost::asio::ssl::context tls(boost::asio::ssl::context::tlsv12_client);
   tls.set_default_verify_paths();
-  nghttp2::asio_http2::client::configure_tls_context(ec, tls);
 
-  nghttp2::asio_http2::client::session sess(
-      io_service, tls, lambda_client.get_hostname(), "443");
+  cppless::beast::resolver_session resolver(ioc);
+  resolver.run(lambda_client.get_hostname(), "443");
 
-  bool connected = false;
-  sess.on_connect([&](const auto&) { connected = true; });
-  sess.on_error([](const boost::system::error_code& ec)
-                { std::cerr << "Error: " << ec.message() << std::endl; });
-
-  while (!connected) {
-    io_service.run_one();
-  }
-
-  cppless::aws::lambda::invocation_request req {
+  cppless::aws::lambda::beast_invocation_request req {
       function_name,
       qualifier,
-      std::vector<unsigned char> {payload.begin(), payload.end()},
+      payload,
   };
 
-  req.on_result(
-      [](const std::vector<unsigned char>& data) {
-        std::cout << std::string {data.begin(), data.end()};
-      });
+  req.on_result([](const std::string& data)
+                { std::cout << data << std::endl; });
 
-  const auto* sess_req = req.submit(sess, lambda_client, key);
-  sess_req->on_close([&sess](uint32_t /*error_code*/) { sess.shutdown(); });
+  cppless::tracing_span_container span_container;
+  auto root = span_container.create_root("lambda_invocation");
 
-  io_service.run();
+  req.submit(resolver, ioc, tls, lambda_client, key, root);
+
+  ioc.run();
+
+  nlohmann::json j = span_container;
+  std::cout << j.dump(2) << std::endl;
 }

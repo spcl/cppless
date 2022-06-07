@@ -18,6 +18,7 @@
 #include <cppless/dispatcher/common.hpp>
 #include <cppless/dispatcher/sendable.hpp>
 #include <cppless/utils/cereal.hpp>
+#include <cppless/utils/tracing.hpp>
 #include <cppless/utils/uninitialized.hpp>
 #include <nlohmann/json.hpp>
 
@@ -218,7 +219,8 @@ public:
     template<class TaskType, class Res, class... Args>
     auto dispatch(TaskType& t,
                   cppless::shared_future<Res> result_future,
-                  std::tuple<Args...> args) -> int
+                  std::tuple<Args...> args,
+                  std::optional<tracing_span_ref> span) -> int
     {
       using specialized_task_data = task_data<TaskType, Args...>;
 

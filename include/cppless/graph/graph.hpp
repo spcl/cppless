@@ -11,57 +11,12 @@
 #include <boost/graph/graphviz.hpp>
 #include <cppless/dispatcher/common.hpp>
 #include <cppless/utils/json.hpp>
+#include <cppless/utils/tracing.hpp>
 #include <cppless/utils/tuple.hpp>
 #include <nlohmann/json.hpp>
 
 namespace cppless::graph
 {
-
-class tracing_span
-{
-public:
-  explicit tracing_span(std::string_view operation_name)
-      : m_operation_name(operation_name)
-  {
-    m_start_time = std::chrono::high_resolution_clock::now();
-  }
-
-  auto end() -> void
-  {
-    m_end_time = std::chrono::high_resolution_clock::now();
-  }
-
-  auto add_tag(std::string_view key, std::string value) -> void
-  {
-    m_tags.emplace(key, value);
-  }
-
-  [[nodiscard]] auto get_operation_name() const -> const std::string_view&
-  {
-    return m_operation_name;
-  }
-  [[nodiscard]] auto get_start_time() const
-      -> const std::chrono::high_resolution_clock::time_point&
-  {
-    return m_start_time;
-  }
-  [[nodiscard]] auto get_end_time() const
-      -> const std::chrono::high_resolution_clock::time_point&
-  {
-    return m_end_time;
-  }
-  [[nodiscard]] auto get_tags() const
-      -> const std::unordered_map<std::string_view, std::string>&
-  {
-    return m_tags;
-  }
-
-private:
-  std::string_view m_operation_name;
-  std::chrono::high_resolution_clock::time_point m_start_time;
-  std::chrono::high_resolution_clock::time_point m_end_time;
-  std::unordered_map<std::string_view, std::string> m_tags;
-};
 
 template<class Executor>
 class builder_core;
@@ -72,9 +27,12 @@ class basic_node_core
 public:
   using executor = Executor;
 
-  basic_node_core(std::size_t id, std::weak_ptr<builder_core<Executor>> builder)
+  basic_node_core(std::size_t id,
+                  std::weak_ptr<builder_core<Executor>> builder,
+                  std::optional<tracing_span_ref> span)
       : m_id(id)
       , m_builder(std::move(builder))
+      , m_span(std::move(span))
   {
   }
   virtual ~basic_node_core() = default;
@@ -86,15 +44,19 @@ public:
   auto operator=(const basic_node_core&) -> basic_node_core& = delete;
   auto operator=(basic_node_core&&) -> basic_node_core& = delete;
 
-  auto add_tracing_span(const tracing_span& span) -> void
+  auto create_child_tracing_span(std::string_view operation_name)
+      -> std::optional<tracing_span_ref>
   {
-    m_tracing_spans.push_back(span);
+    if (m_span) {
+      return m_span->create_child(operation_name);
+    }
+    return std::nullopt;
   }
 
-  [[nodiscard]] auto get_tracing_spans() const
-      -> const std::vector<tracing_span>&
+  auto create_scoped_child_tracing_span(std::string_view operation_name)
+      -> scoped_tracing_span
   {
-    return m_tracing_spans;
+    return {m_span, operation_name};
   }
 
   virtual auto get_successor_ids() -> std::vector<std::size_t> = 0;
@@ -113,7 +75,7 @@ public:
 private:
   std::size_t m_id;
   std::weak_ptr<builder_core<Executor>> m_builder;
-  std::vector<tracing_span> m_tracing_spans;
+  std::optional<tracing_span_ref> m_span;
 };
 
 template<class Executor>
@@ -121,8 +83,9 @@ class node_core : public Executor::node_core
 {
 public:
   explicit node_core(std::size_t id,
-                     std::weak_ptr<builder_core<Executor>> builder)
-      : Executor::node_core(id, std::move(builder))
+                     std::weak_ptr<builder_core<Executor>> builder,
+                     std::optional<tracing_span_ref> span)
+      : Executor::node_core(id, std::move(builder), std::move(span))
   {
   }
 };
@@ -172,8 +135,9 @@ class basic_receiver<Executor, std::tuple<Args...>>
 {
 public:
   explicit basic_receiver(std::size_t id,
-                          std::weak_ptr<builder_core<Executor>> builder)
-      : node_core<Executor>(id, std::move(builder))
+                          std::weak_ptr<builder_core<Executor>> builder,
+                          std::optional<tracing_span_ref> span)
+      : node_core<Executor>(id, std::move(builder), std::move(span))
       , m_slots()
 
   {
@@ -223,9 +187,11 @@ class receiver<Executor, std::tuple<Args...>>
 {
 public:
   explicit receiver(std::size_t id,
-                    std::weak_ptr<builder_core<Executor>> builder)
-      : node_core<Executor>(id, builder)
-      , Executor::template receiver<std::tuple<Args...>>(id, builder)
+                    std::weak_ptr<builder_core<Executor>> builder,
+                    std::optional<tracing_span_ref> span)
+      : node_core<Executor>(id, builder, span)
+      , Executor::template receiver<std::tuple<Args...>>(
+            id, builder, std::move(span))
   {
   }
 };
@@ -234,8 +200,10 @@ template<class Executor, class Res>
 class basic_sender : virtual public node_core<Executor>
 {
 public:
-  basic_sender(std::size_t id, std::weak_ptr<builder_core<Executor>> builder)
-      : node_core<Executor>(id, std::move(builder))
+  basic_sender(std::size_t id,
+               std::weak_ptr<builder_core<Executor>> builder,
+               std::optional<tracing_span_ref> span)
+      : node_core<Executor>(id, std::move(builder), std::move(span))
   {
   }
 
@@ -272,8 +240,10 @@ template<class Executor>
 class basic_sender<Executor, void> : virtual public node_core<Executor>
 {
 public:
-  basic_sender(std::size_t id, std::weak_ptr<builder_core<Executor>> builder)
-      : node_core<Executor>(id, std::move(builder))
+  basic_sender(std::size_t id,
+               std::weak_ptr<builder_core<Executor>> builder,
+               std::optional<tracing_span_ref> span)
+      : node_core<Executor>(id, std::move(builder), std::move(span))
   {
   }
 
@@ -312,9 +282,11 @@ class sender
     , public Executor::template sender<Res>
 {
 public:
-  sender(std::size_t id, std::weak_ptr<builder_core<Executor>> builder)
-      : node_core<Executor>(id, builder)
-      , Executor::template sender<Res>(id, builder)
+  sender(std::size_t id,
+         std::weak_ptr<builder_core<Executor>> builder,
+         std::optional<tracing_span_ref> span)
+      : node_core<Executor>(id, builder, span)
+      , Executor::template sender<Res>(id, builder, span)
   {
   }
 
@@ -341,10 +313,11 @@ public:
 
   basic_task_node(std::size_t id,
                   std::weak_ptr<builder_core<Executor>> builder,
+                  std::optional<tracing_span_ref> span,
                   Task& task)
-      : node_core<Executor>(id, builder)
-      , receiver<Executor, args>(id, builder)
-      , sender<Executor, res>(id, builder)
+      : node_core<Executor>(id, builder, span)
+      , receiver<Executor, args>(id, builder, span)
+      , sender<Executor, res>(id, builder, span)
       , m_task(std::move(task))
   {
   }
@@ -364,9 +337,10 @@ class task_node : public Executor::template task_node<Task>
 public:
   task_node(std::size_t id,
             std::weak_ptr<builder_core<Executor>> builder,
+            std::optional<tracing_span_ref> span,
             Task& task)
-      : node_core<Executor>(id, std::move(builder))
-      , Executor::template task_node<Task>(id, builder, task)
+      : node_core<Executor>(id, builder, span)
+      , Executor::template task_node<Task>(id, builder, span, task)
   {
   }
 };
@@ -381,9 +355,10 @@ public:
   using sending_type = void;
 
   basic_source_node(std::size_t id,
-                    std::weak_ptr<builder_core<Executor>> builder)
-      : node_core<Executor>(id, builder)
-      , sender<Executor, void>(id, builder)
+                    std::weak_ptr<builder_core<Executor>> builder,
+                    std::optional<tracing_span_ref> span)
+      : node_core<Executor>(id, builder, span)
+      , sender<Executor, void>(id, builder, span)
   {
   }
 };
@@ -392,9 +367,11 @@ template<class Executor>
 class source_node : public Executor::source_node
 {
 public:
-  source_node(std::size_t id, std::weak_ptr<builder_core<Executor>> builder)
-      : node_core<Executor>(id, builder)
-      , Executor::source_node(id, builder)
+  source_node(std::size_t id,
+              std::weak_ptr<builder_core<Executor>> builder,
+              std::optional<tracing_span_ref> span)
+      : node_core<Executor>(id, builder, span)
+      , Executor::source_node(id, builder, span)
   {
   }
 };
@@ -403,8 +380,10 @@ template<class Executor>
 class builder_core : public std::enable_shared_from_this<builder_core<Executor>>
 {
 public:
-  explicit builder_core(std::shared_ptr<Executor> executor)
+  explicit builder_core(std::optional<tracing_span_ref> span,
+                        std::shared_ptr<Executor> executor)
       : m_executor(std::move(executor))
+      , m_span(std::move(span))
   {
   }
 
@@ -415,8 +394,12 @@ public:
   {
     int next_id = static_cast<int>(m_nodes.size());
     auto self = this->shared_from_this();
-    auto new_node =
-        std::make_shared<task_node<Executor, Task>>(next_id, self, task);
+    std::optional<tracing_span_ref> child_span;
+    if (m_span) {
+      child_span.emplace(m_span->create_child("node"));
+    }
+    auto new_node = std::make_shared<task_node<Executor, Task>>(
+        next_id, self, child_span, task);
     m_nodes.push_back(new_node);
     return new_node;
   }
@@ -425,7 +408,12 @@ public:
   {
     int next_id = static_cast<int>(m_nodes.size());
     auto self = this->shared_from_this();
-    auto new_node = std::make_shared<source_node<Executor>>(next_id, self);
+    std::optional<tracing_span_ref> child_span;
+    if (m_span) {
+      child_span.emplace(m_span->create_child("node"));
+    }
+    auto new_node =
+        std::make_shared<source_node<Executor>>(next_id, self, child_span);
     m_nodes.push_back(new_node);
     return new_node;
   }
@@ -468,19 +456,9 @@ public:
 
 private:
   std::vector<std::shared_ptr<node_core<Executor>>> m_nodes {};
+  std::optional<tracing_span_ref> m_span;
   std::shared_ptr<Executor> m_executor;
 };
-
-// Serializer for tracing_span
-inline void to_json(nlohmann::json& j, const tracing_span& span)
-{
-  j = nlohmann::json {
-      {"name", span.get_operation_name()},
-      {"start_time", span.get_start_time()},
-      {"end_time", span.get_end_time()},
-      {"tags", span.get_tags()},
-  };
-}
 
 // Serializer for std::shared_ptr<node_core<Executor>>
 template<class Executor>
@@ -490,7 +468,6 @@ inline void to_json(nlohmann::json& j,
   j = nlohmann::json {
       {"id", node->get_id()},
       {"successors", node->get_successor_ids()},
-      {"tracing_spans", node->get_tracing_spans()},
   };
 }
 
@@ -508,8 +485,9 @@ class builder
 {
 public:
   template<class... ExecutorArgs>
-  explicit builder(ExecutorArgs&&... args)
+  explicit builder(std::optional<tracing_span_ref> span, ExecutorArgs&&... args)
       : m_core(std::make_shared<builder_core<Executor>>(
+          span,
           std::make_shared<Executor>(std::forward<ExecutorArgs>(args)...)))
   {
     m_core->get_executor()->set_builder(m_core);

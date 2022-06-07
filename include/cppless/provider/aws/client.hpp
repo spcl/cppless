@@ -3,11 +3,17 @@
 #include <chrono>
 #include <cstdlib>
 #include <iomanip>
+#include <optional>
 #include <sstream>
 #include <string>
+#include <utility>
 
 #include <boost/algorithm/hex.hpp>
+#include <boost/asio/ssl.hpp>
+#include <boost/core/ignore_unused.hpp>
 #include <cppless/provider/aws/auth.hpp>
+#include <cppless/utils/beast/http_request_session.hpp>
+#include <cppless/utils/tracing.hpp>
 #include <nghttp2/asio_http2_client.h>
 
 namespace cppless::aws
@@ -28,8 +34,10 @@ public:
   {
   }
 
-  [[nodiscard]] auto create_derived_key(const std::string& id,
-                                        const std::string& secret) const
+  [[nodiscard]] auto create_derived_key(
+      const std::string& id,
+      const std::string& secret,
+      std::optional<std::string> security_token = std::nullopt) const
       -> aws_v4_derived_key
   {
     // Get current date
@@ -51,6 +59,7 @@ public:
         .service = m_service,
         .secret = secret,
         .id = id,
+        .security_token = std::move(security_token),
     };
 
     return key.derived_key();
@@ -58,9 +67,19 @@ public:
 
   [[nodiscard]] auto create_derived_key_from_env() const -> aws_v4_derived_key
   {
-    auto* key_id = std::getenv("AWS_ACCESS_KEY_ID");  // NOLINT
-    auto* key_secret = std::getenv("AWS_SECRET_ACCESS_KEY");  // NOLINT
-    return create_derived_key(key_id, key_secret);
+    auto* key_id_env = std::getenv("AWS_ACCESS_KEY_ID");  // NOLINT
+    auto* key_secret_env = std::getenv("AWS_SECRET_ACCESS_KEY");  // NOLINT
+    if (key_id_env == nullptr || key_secret_env == nullptr) {
+      throw std::runtime_error(
+          "AWS_ACCESS_KEY_ID and AWS_SECRET_ACCESS_KEY must be set");
+    }
+
+    auto* session_token_env = std::getenv("AWS_SESSION_TOKEN");  // NOLINT
+    std::optional<std::string> session_token;
+    if (session_token_env != nullptr) {
+      session_token = std::string {session_token_env};
+    }
+    return create_derived_key(key_id_env, key_secret_env, session_token);
   }
 
   [[nodiscard]] auto get_hostname() const -> std::string
@@ -85,10 +104,10 @@ private:
 };
 
 template<class DerivedRequest, class ResultType>
-class request
+class base_request
 {
 public:
-  request() = default;
+  base_request() = default;
 
   [[nodiscard]] auto compute_canonical_hash(const client& client) const
       -> std::vector<unsigned char>
@@ -174,39 +193,6 @@ public:
     return ss.str();
   }
 
-  auto submit(nghttp2::asio_http2::client::session& sess,
-              const client& client,
-              const aws_v4_derived_key& key)
-      -> const nghttp2::asio_http2::client::request*
-  {
-    boost::system::error_code ec;
-
-    auto& request = static_cast<DerivedRequest&>(*this);
-
-    auto auth_header = request.compute_authorization_header(client, key);
-
-    auto full_url =
-        "https://" + client.get_hostname() + request.get_canonical_url();
-    auto query_string = request.get_canonical_query_string();
-    if (!query_string.empty()) {
-      full_url += "?" + query_string;
-    }
-
-    const nghttp2::asio_http2::client::request* sess_req =
-        sess.submit(ec,
-                    request.get_http_request_method(),
-                    full_url,
-                    request.get_payload(),
-                    {
-                        {"X-Amz-Date", {request.get_date(), false}},
-                        {"Authorization", {auth_header, true}},
-                    });
-    sess_req->on_response(
-        [&request](const nghttp2::asio_http2::client::response& res)
-        { request.on_http2_response(res); });
-    return sess_req;
-  }
-
   auto on_result(const std::function<void(const ResultType&)>& callback)
   {
     m_result_callback = std::move(callback);
@@ -229,4 +215,130 @@ public:
 protected:
   std::function<void(const ResultType&)> m_result_callback;  // NOLINT
 };
+
+// nghttp2
+template<class DerivedRequest, class ResultType>
+class nghttp2_request : public base_request<DerivedRequest, ResultType>
+{
+public:
+  auto submit(nghttp2::asio_http2::client::session& sess,
+              const client& client,
+              const aws_v4_derived_key& key,
+              std::optional<tracing_span_ref> span)
+      -> const nghttp2::asio_http2::client::request*
+  {
+    boost::ignore_unused(span);
+
+    boost::system::error_code ec;
+
+    auto& request = static_cast<DerivedRequest&>(*this);
+
+    auto auth_header = request.compute_authorization_header(client, key);
+
+    auto full_url =
+        "https://" + client.get_hostname() + request.get_canonical_url();
+    auto query_string = request.get_canonical_query_string();
+    if (!query_string.empty()) {
+      full_url += "?" + query_string;
+    }
+
+    nghttp2::asio_http2::header_map headers = {
+        {"X-Amz-Date", {request.get_date(), false}},
+        {"Authorization", {auth_header, true}},
+    };
+
+    auto security_token = key.get_security_token();
+    if (security_token) {
+      headers.insert({"X-Amz-Security-Token", {*security_token, true}});
+    }
+
+    const nghttp2::asio_http2::client::request* sess_req =
+        sess.submit(ec,
+                    request.get_http_request_method(),
+                    full_url,
+                    request.get_payload(),
+                    headers);
+    sess_req->on_response(
+        [&request](const nghttp2::asio_http2::client::response& res)
+        { request.on_http2_response(res); });
+    return sess_req;
+  }
+};
+
+// beast
+template<class DerivedRequest, class ResultType>
+class beast_request : public base_request<DerivedRequest, ResultType>
+{
+public:
+  auto submit(beast::resolver_session& resolver_session,
+              boost::beast::net::io_context& ioc,
+              boost::asio::ssl::context& tls,
+              const client& client,
+              const aws_v4_derived_key& key,
+              std::optional<tracing_span_ref> span = std::nullopt)
+  {
+    if (span) {
+      span->inline_children();
+    }
+
+    auto& request = static_cast<DerivedRequest&>(*this);
+
+    std::optional<tracing_span_ref> authorization_span;
+    if (span) {
+      authorization_span.emplace(span->create_child("authorization").start());
+    }
+
+    auto auth_header = request.compute_authorization_header(client, key);
+
+    if (authorization_span) {
+      authorization_span->end();
+    }
+
+    const auto method = request.get_http_request_method();
+
+    auto target = request.get_canonical_url();
+    auto query_string = request.get_query_string();
+    if (!query_string.empty()) {
+      target += "?" + query_string;
+    }
+
+    m_request_session = std::make_shared<beast::http_request_session>(ioc, tls);
+    boost::beast::http::request<boost::beast::http::string_body>& req =
+        m_request_session->request();
+    req.body() = request.get_payload();
+    req.method(boost::beast::http::string_to_verb(method));
+    req.target(target);
+
+    req.set(boost::beast::http::field::host, client.get_hostname());
+    req.set("X-Amz-Date", request.get_date());
+
+    auto security_token = key.get_security_token();
+    if (security_token) {
+      req.set("X-Amz-Security-Token", *security_token);
+    }
+
+    req.set(boost::beast::http::field::authorization, auth_header);
+    req.set(boost::beast::http::field::content_length,
+            std::to_string(req.body().size()));
+    req.set(boost::beast::http::field::accept, "*/*");
+    req.version(11);
+    req.keep_alive(/*value=*/false);
+
+    m_request_session->set_callback(
+        [&request](
+            const boost::beast::http::response<boost::beast::http::string_body>&
+                res) { request.on_http1_response(res); });
+
+    std::optional<tracing_span_ref> request_span;
+    if (span) {
+      request_span.emplace(
+          span->create_child("http_request").inline_children());
+    }
+    m_request_session->run(resolver_session, request_span);
+  }
+
+private:
+  std::shared_ptr<beast::http_request_session> m_request_session;
+};
+
 }  // namespace cppless::aws

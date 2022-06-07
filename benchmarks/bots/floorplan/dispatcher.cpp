@@ -68,7 +68,7 @@ auto add_cell_dispatcher(
       } else if (area < result.min_area) {
         if (cutoff == 0) {
           std::vector<cell> cell_vector {cells.begin(), cells.end()};
-          typename Dispatcher::task::sendable task =(
+          typename Dispatcher::template task<>::sendable task =(
               [min_area = result.min_area,
                cell_vector,
                footprint,

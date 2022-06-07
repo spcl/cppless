@@ -4,10 +4,10 @@
 #include <unordered_map>
 #include <unordered_set>
 
+#include <cppless/dispatcher/common.hpp>
 #include <cppless/graph/graph.hpp>
+#include <cppless/utils/tracing.hpp>
 #include <cppless/utils/tuple.hpp>
-
-#include "cppless/dispatcher/common.hpp"
 
 namespace cppless::executor
 {
@@ -28,8 +28,10 @@ public:
   {
   public:
     node_core(std::size_t id,
-              std::weak_ptr<graph::builder_core<executor_type>> builder)
-        : graph::basic_node_core<executor_type>(id, std::move(builder))
+              std::weak_ptr<graph::builder_core<executor_type>> builder,
+              std::optional<tracing_span_ref> span)
+        : graph::basic_node_core<executor_type>(
+            id, std::move(builder), std::move(span))
     {
     }
 
@@ -99,9 +101,11 @@ public:
   {
   public:
     explicit receiver(std::size_t id,
-                      std::weak_ptr<graph::builder_core<executor_type>> builder)
-        : graph::node_core<executor_type>(id, builder)
-        , graph::basic_receiver<executor_type, std::tuple<Args...>>(id, builder)
+                      std::weak_ptr<graph::builder_core<executor_type>> builder,
+                      std::optional<tracing_span_ref> span)
+        : graph::node_core<executor_type>(id, builder, span)
+        , graph::basic_receiver<executor_type, std::tuple<Args...>>(
+              id, builder, span)
     {
     }
 
@@ -124,9 +128,10 @@ public:
   {
   public:
     sender(std::size_t id,
-           std::weak_ptr<graph::builder_core<executor_type>> builder)
-        : graph::node_core<executor_type>(id, builder)
-        , graph::basic_sender<executor_type, Res>(id, builder)
+           std::weak_ptr<graph::builder_core<executor_type>> builder,
+           std::optional<tracing_span_ref> span)
+        : graph::node_core<executor_type>(id, builder, span)
+        , graph::basic_sender<executor_type, Res>(id, builder, span)
     {
     }
 
@@ -149,9 +154,10 @@ public:
   {
   public:
     sender(std::size_t id,
-           std::weak_ptr<graph::builder_core<executor_type>> builder)
-        : graph::node_core<executor_type>(id, builder)
-        , graph::basic_sender<executor_type, void>(id, builder)
+           std::weak_ptr<graph::builder_core<executor_type>> builder,
+           std::optional<tracing_span_ref> span)
+        : graph::node_core<executor_type>(id, builder, span)
+        , graph::basic_sender<executor_type, void>(id, builder, span)
     {
     }
 
@@ -170,24 +176,33 @@ public:
     explicit task_node(
         std::size_t id,
         std::weak_ptr<graph::builder_core<executor_type>> builder,
+        std::optional<tracing_span_ref> span,
         Task& task)
-        : graph::node_core<executor_type>(id, builder)
-        , graph::basic_task_node<executor_type, Task>(id, builder, task)
+        : graph::node_core<executor_type>(id, builder, span)
+        , graph::basic_task_node<executor_type, Task>(id, builder, span, task)
     {
     }
 
     auto run(typename Dispatcher::instance& dispatcher) -> int override
     {
       typename Task::args arg_values = this->get_args();
-      cppless::graph::tracing_span dispatch_span {"dispatch"};
-      int fut_id =
-          dispatcher.dispatch(this->get_task(), this->get_future(), arg_values);
-      dispatch_span.end();
-      this->add_tracing_span(dispatch_span);
+
+      auto dispatch_span = this->create_child_tracing_span("dispatch");
+      if (dispatch_span) {
+        m_dispatch_span.emplace(*dispatch_span);
+        m_dispatch_span->start();
+      }
+      int fut_id = dispatcher.dispatch(
+          this->get_task(), this->get_future(), arg_values, m_dispatch_span);
+
       return fut_id;
     }
     auto propagate_value() -> void override
     {
+      if (m_dispatch_span) {
+        m_dispatch_span->end();
+      }
+
       typename Task::res& res_value = this->get_result();
       std::shared_ptr<graph::builder_core<host_controller_executor<Dispatcher>>>
           builder = this->get_builder();
@@ -200,6 +215,9 @@ public:
         exec->notify(successor->get_owning_node_id());
       }
     }
+
+  private:
+    std::optional<tracing_span_ref> m_dispatch_span;
   };
 
   class source_node
@@ -208,14 +226,20 @@ public:
   {
   public:
     source_node(std::size_t id,
-                std::weak_ptr<graph::builder_core<executor_type>> builder)
-        : graph::node_core<executor_type>(id, builder)
-        , graph::basic_source_node<executor_type>(id, builder)
+                std::weak_ptr<graph::builder_core<executor_type>> builder,
+                std::optional<tracing_span_ref> span)
+        : graph::node_core<executor_type>(id, builder, span)
+        , graph::basic_source_node<executor_type>(id, builder, span)
     {
     }
 
     auto run(typename Dispatcher::instance& /*dispatcher*/) -> int override
     {
+      auto run_span = this->create_child_tracing_span("run");
+      if (run_span) {
+        run_span->start();
+        run_span->end();
+      }
       return -1;
     }
     auto propagate_value() -> void override
@@ -250,11 +274,8 @@ public:
       return;
     }
 
-    auto start = std::chrono::high_resolution_clock::now();
-
     std::unordered_set<std::size_t> running_nodes;
 
-    std::unordered_map<std::size_t, cppless::graph::tracing_span> wait_spans;
     int finished_nodes = 0;
 
     // Populate the m_ready_nodes vector with all nodes that don't have any
@@ -275,19 +296,10 @@ public:
 
         int future_id = node->run(m_instance);
 
-        wait_spans.emplace(node_id, "wait");
-
         if (future_id == -1) {
           m_finished_nodes++;
           finished_nodes++;
 
-          auto span_it = wait_spans.find(node_id);
-          if (span_it != wait_spans.end()) {
-            cppless::graph::tracing_span& span = span_it->second;
-            span.end();
-            node->add_tracing_span(span);
-            wait_spans.erase(span_it);
-          }
           node->propagate_value();
         } else {
           running_nodes.insert(node_id);
@@ -304,14 +316,6 @@ public:
       std::size_t finished_node_id = m_future_node_map[finished];
       auto node = builder->get_node(finished_node_id);
 
-      auto span_it = wait_spans.find(finished_node_id);
-      if (span_it != wait_spans.end()) {
-        cppless::graph::tracing_span& span = span_it->second;
-        span.end();
-        node->add_tracing_span(span);
-        wait_spans.erase(span_it);
-      }
-
       m_finished_nodes++;
       finished_nodes++;
       running_nodes.erase(node->get_id());
@@ -319,12 +323,6 @@ public:
       node->propagate_value();
       // This also adds the node to the ready nodes
     } while (true);
-
-    auto end = std::chrono::high_resolution_clock::now();
-    auto duration =
-        std::chrono::duration_cast<std::chrono::milliseconds>(end - start);
-    std::cout << "[executor] Executed " << finished_nodes << " tasks in "
-              << duration.count() << "ms" << std::endl;
   }
 
   auto notify(std::size_t id) -> void
