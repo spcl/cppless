@@ -100,16 +100,16 @@ struct benchmark : boost::ut::detail::test
       if (dry_run) {
         return;
       }
-      using duration = std::chrono::high_resolution_clock::duration;
-      using time_point = std::chrono::high_resolution_clock::time_point;
+      using duration = std::chrono::steady_clock::duration;
+      using time_point = std::chrono::steady_clock::time_point;
 
       time_point initial_start;
       time_point initial_stop;
       auto l = [&](auto run)
       {
-        initial_start = std::chrono::high_resolution_clock::now();
+        initial_start = std::chrono::steady_clock::now();
         run();
-        initial_stop = std::chrono::high_resolution_clock::now();
+        initial_stop = std::chrono::steady_clock::now();
       };
       test(benchmark_accessor {l});
       const auto initial_ns =
@@ -136,11 +136,11 @@ struct benchmark : boost::ut::detail::test
         if (batch_size > 1) {
           auto l = [&](auto run)
           {
-            start = std::chrono::high_resolution_clock::now();
+            start = std::chrono::steady_clock::now();
             for (unsigned int i = 0; i < batch_size; i++) {
               run();
             }
-            stop = std::chrono::high_resolution_clock::now();
+            stop = std::chrono::steady_clock::now();
           };
 
           test(benchmark_accessor {l});
@@ -148,9 +148,9 @@ struct benchmark : boost::ut::detail::test
         } else {
           auto l = [&](auto run)
           {
-            start = std::chrono::high_resolution_clock::now();
+            start = std::chrono::steady_clock::now();
             run();
-            stop = std::chrono::high_resolution_clock::now();
+            stop = std::chrono::steady_clock::now();
           };
           test(benchmark_accessor {l});
         };
