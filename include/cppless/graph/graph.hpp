@@ -303,11 +303,11 @@ class basic_task_node
     , public sender<Executor, typename Task::res>
 {
 public:
-  using task = Task;
-  using args = typename task::args;
-  using res = typename task::res;
+  using task_type = Task;
+  using args = typename task_type::args;
+  using res = typename task_type::res;
   using executor = Executor;
-  using sending_type = typename task::res;
+  using sending_type = typename task_type::res;
 
   basic_task_node(std::size_t id,
                   std::weak_ptr<builder_core<Executor>> builder,
@@ -385,7 +385,7 @@ public:
   {
   }
 
-  using executor = Executor;
+  using executor_type = Executor;
 
   template<class Task>
   auto create_node(Task& task) -> std::shared_ptr<task_node<Executor, Task>>
