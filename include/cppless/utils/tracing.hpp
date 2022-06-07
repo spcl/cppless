@@ -2,8 +2,8 @@
 #include <chrono>
 #include <memory>
 #include <optional>
+#include <ratio>
 #include <string>
-#include <string_view>
 #include <unordered_map>
 #include <vector>
 
@@ -15,12 +15,18 @@ namespace cppless
 
 struct tracing_span
 {
-  std::string_view operation_name;
-  std::chrono::high_resolution_clock::time_point start_time;
-  std::chrono::high_resolution_clock::time_point end_time;
-  std::unordered_map<std::string_view, std::string> tags;
+  std::string operation_name;
+  std::chrono::steady_clock::time_point start_time;
+  std::chrono::steady_clock::time_point end_time;
+  std::unordered_map<std::string, std::string> tags;
   unsigned long parent;
   bool inline_children;
+
+  template<class Archive>
+  void serialize(Archive& ar)
+  {
+    ar(operation_name, start_time, end_time, tags, parent, inline_children);
+  }
 };
 
 class tracing_span_ref;
@@ -43,11 +49,32 @@ public:
     return m_spans[id];
   }
 
-  [[nodiscard]] auto create_root(std::string_view operation_name)
+  [[nodiscard]] auto create_root(std::string operation_name)
       -> tracing_span_ref;
+
   [[nodiscard]] auto create_child(unsigned long parent,
-                                  std::string_view operation_name)
+                                  std::string operation_name)
       -> tracing_span_ref;
+
+  [[nodiscard]] auto concat(
+      const tracing_span_container& other,
+      std::chrono::duration<long long, std::nano> clock_diff) -> unsigned long
+  {
+    auto offset = m_spans.size();
+    m_spans.insert(m_spans.end(), other.m_spans.begin(), other.m_spans.end());
+    for (unsigned long i = offset; i < m_spans.size(); ++i) {
+      m_spans[i].parent += offset;
+      m_spans[i].start_time += clock_diff;
+      m_spans[i].end_time += clock_diff;
+    }
+    return offset;
+  }
+
+  template<class Archive>
+  void serialize(Archive& archive)
+  {
+    archive(m_spans);
+  }
 
 private:
   std::vector<tracing_span> m_spans;
@@ -63,23 +90,35 @@ public:
   {
   }
 
+  // Destructor
+  ~tracing_span_ref() = default;
+
   // Copy constructor
   tracing_span_ref(const tracing_span_ref& other) = default;
+
+  // Delete copy assignment operator
+  auto operator=(const tracing_span_ref& other) -> tracing_span_ref& = delete;
 
   // Move constructor
   tracing_span_ref(tracing_span_ref&& other) = default;
 
+  // Delete move assignment operator
+  auto operator=(tracing_span_ref&& other) -> tracing_span_ref& = delete;
+
+  [[nodiscard]] auto id() const -> unsigned long
+  {
+    return m_index;
+  }
+
   auto start() -> tracing_span_ref
   {
-    m_container.span(m_index).start_time =
-        std::chrono::high_resolution_clock::now();
+    m_container.span(m_index).start_time = std::chrono::steady_clock::now();
     return *this;
   }
 
   auto end() -> tracing_span_ref
   {
-    m_container.span(m_index).end_time =
-        std::chrono::high_resolution_clock::now();
+    m_container.span(m_index).end_time = std::chrono::steady_clock::now();
     return *this;
   }
 
@@ -89,7 +128,7 @@ public:
     return *this;
   }
 
-  auto set_tag(std::string_view key, std::string_view value) -> void
+  auto set_tag(std::string key, std::string value) -> void
   {
     m_container.span(m_index).tags[key] = value;
   }
@@ -100,15 +139,25 @@ public:
   }
 
   [[nodiscard]] auto tags() const
-      -> const std::unordered_map<std::string_view, std::string>&
+      -> const std::unordered_map<std::string, std::string>&
   {
     return m_container.span(m_index).tags;
   }
 
-  [[nodiscard]] auto create_child(std::string_view operation_name)
+  [[nodiscard]] auto create_child(std::string operation_name)
       -> tracing_span_ref
   {
-    return m_container.create_child(m_index, operation_name);
+    return m_container.create_child(m_index, std::move(operation_name));
+  }
+
+  auto insert(const tracing_span_container& other,
+              unsigned long root_id,
+              std::chrono::duration<long long, std::nano> clock_diff)
+      -> tracing_span_ref
+  {
+    auto offset = m_container.concat(other, clock_diff);
+    m_container.span(root_id + offset).parent = m_index;
+    return tracing_span_ref(m_container, root_id + offset);
   }
 
 private:
@@ -120,7 +169,7 @@ class scoped_tracing_span
 {
 public:
   scoped_tracing_span(std::optional<tracing_span_ref> parent,
-                      std::string_view operation_name)
+                      std::string operation_name)
   {
     if (parent) {
       m_ref.emplace(parent->create_child(operation_name).start());
@@ -129,13 +178,14 @@ public:
 
   // Default copy constructor
   scoped_tracing_span(const scoped_tracing_span& other) = default;
+  // Delete copy assignment
+  auto operator=(const scoped_tracing_span& other)
+      -> scoped_tracing_span& = delete;
+
   // Default move constructor
   scoped_tracing_span(scoped_tracing_span&& other) = default;
-
-  // Delete copy assignment
-  scoped_tracing_span& operator=(const scoped_tracing_span& other) = delete;
   // Delete move assignment
-  scoped_tracing_span& operator=(scoped_tracing_span&& other) = delete;
+  auto operator=(scoped_tracing_span&& other) -> scoped_tracing_span& = delete;
 
   ~scoped_tracing_span()
   {
@@ -148,7 +198,7 @@ private:
   std::optional<tracing_span_ref> m_ref;
 };
 
-inline auto tracing_span_container::create_root(std::string_view operation_name)
+inline auto tracing_span_container::create_root(std::string operation_name)
     -> tracing_span_ref
 {
   unsigned long id = m_spans.size();
@@ -158,8 +208,9 @@ inline auto tracing_span_container::create_root(std::string_view operation_name)
   return tracing_span_ref {*this, id};
 }
 
-inline auto tracing_span_container::create_child(
-    unsigned long parent, std::string_view operation_name) -> tracing_span_ref
+inline auto tracing_span_container::create_child(unsigned long parent,
+                                                 std::string operation_name)
+    -> tracing_span_ref
 {
   unsigned long id = m_spans.size();
   auto& span = m_spans.emplace_back();
