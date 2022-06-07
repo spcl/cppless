@@ -59,15 +59,14 @@ public:
     return {m_span, operation_name};
   }
 
-  virtual auto get_successor_ids() -> std::vector<std::size_t> = 0;
+  virtual auto successor_ids() -> std::vector<std::size_t> = 0;
 
-  [[nodiscard]] auto get_id() const -> std::size_t
+  [[nodiscard]] auto id() const -> std::size_t
   {
     return m_id;
   }
 
-  [[nodiscard]] auto get_builder() const
-      -> std::shared_ptr<builder_core<executor>>
+  [[nodiscard]] auto builder() const -> std::shared_ptr<builder_core<executor>>
   {
     return m_builder.lock();
   }
@@ -106,7 +105,7 @@ public:
     return m_is_connected;
   }
 
-  [[nodiscard]] auto get_owning_node_id() const -> std::size_t
+  [[nodiscard]] auto owning_node_id() const -> std::size_t
   {
     return m_owning_node_id;
   }
@@ -147,7 +146,7 @@ public:
   }
 
   template<int I>
-  auto get_slot() -> std::shared_ptr<
+  auto slot() -> std::shared_ptr<
       receiver_slot<Executor, std::tuple_element_t<I, std::tuple<Args...>>>>
   {
     return std::get<I>(m_slots);
@@ -155,18 +154,17 @@ public:
 
   auto create_empty_slot() -> std::shared_ptr<receiver_slot<Executor, void>>
   {
-    auto slot = std::make_shared<receiver_slot<Executor, void>>(this->get_id());
+    auto slot = std::make_shared<receiver_slot<Executor, void>>(this->id());
     m_empty_slots.push_back(slot);
     return slot;
   }
 
-  auto get_slots()
-      -> std::tuple<std::shared_ptr<receiver_slot<Executor, Args>>...>
+  auto slots() -> std::tuple<std::shared_ptr<receiver_slot<Executor, Args>>...>
   {
     return m_slots;
   }
 
-  auto get_empty_slots()
+  auto empty_slots()
       -> std::vector<std::shared_ptr<receiver_slot<Executor, void>>>
   {
     return m_empty_slots;
@@ -216,18 +214,18 @@ public:
     m_successors.push_back(successor);
   }
 
-  auto get_successors()
+  auto successors()
       -> std::vector<std::shared_ptr<receiver_slot<Executor, Res>>>&
   {
     return m_successors;
   }
 
-  auto get_successor_ids() -> std::vector<std::size_t> override
+  auto successor_ids() -> std::vector<std::size_t> override
   {
     std::vector<std::size_t> ids;
 
     for (auto& successor : m_successors) {
-      ids.push_back(successor->get_owning_node_id());
+      ids.push_back(successor->owning_node_id());
     }
     return ids;
   }
@@ -256,18 +254,18 @@ public:
     m_successors.push_back(successor);
   }
 
-  auto get_successors()
+  auto successors()
       -> std::vector<std::shared_ptr<receiver_slot<Executor, void>>>&
   {
     return m_successors;
   }
 
-  auto get_successor_ids() -> std::vector<std::size_t> override
+  auto successor_ids() -> std::vector<std::size_t> override
   {
     std::vector<std::size_t> ids;
 
     for (auto& successor : m_successors) {
-      ids.push_back(successor->get_owning_node_id());
+      ids.push_back(successor->owning_node_id());
     }
     return ids;
   }
@@ -290,11 +288,11 @@ public:
   {
   }
 
-  auto get_future() -> cppless::shared_future<Res>&
+  auto future() -> cppless::shared_future<Res>&
   {
     // Cast to Executor::template sender<Res>
     auto sender = static_cast<typename Executor::template sender<Res>*>(this);
-    return sender->get_future();
+    return sender->future();
   }
 };
 
@@ -322,7 +320,7 @@ public:
   {
   }
 
-  auto get_task() -> Task&
+  auto task() -> Task&
   {
     return m_task;
   }
@@ -418,17 +416,17 @@ public:
     return new_node;
   }
 
-  auto get_nodes() -> std::vector<std::shared_ptr<node_core<Executor>>>&
+  auto nodes() -> std::vector<std::shared_ptr<node_core<Executor>>>&
   {
     return m_nodes;
   }
 
-  auto get_executor() -> std::shared_ptr<Executor>&
+  auto executor() -> std::shared_ptr<Executor>&
   {
     return m_executor;
   }
 
-  auto get_node(std::size_t id) -> std::shared_ptr<node_core<Executor>>
+  auto node(std::size_t id) -> std::shared_ptr<node_core<Executor>>
   {
     return m_nodes[id];
   }
@@ -442,8 +440,8 @@ public:
         boost::property<boost::vertex_name_t, std::string>>;
     digraph d(m_nodes.size());
     for (auto& node : m_nodes) {
-      for (auto& successor : node->get_successor_ids()) {
-        boost::add_edge(node->get_id(), successor, d);
+      for (auto& successor : node->successor_ids()) {
+        boost::add_edge(node->id(), successor, d);
       }
     }
     boost::write_graphviz(out, d);
@@ -466,8 +464,8 @@ inline void to_json(nlohmann::json& j,
                     const std::shared_ptr<node_core<Executor>>& node)
 {
   j = nlohmann::json {
-      {"id", node->get_id()},
-      {"successors", node->get_successor_ids()},
+      {"id", node->id()},
+      {"successors", node->successor_ids()},
   };
 }
 
@@ -476,7 +474,7 @@ inline void to_json(nlohmann::json& j,
                     const std::shared_ptr<builder_core<Executor>>& b)
 {
   j = nlohmann::json {
-      {"nodes", b->get_nodes()},
+      {"nodes", b->nodes()},
   };
 }
 
@@ -490,7 +488,7 @@ public:
           span,
           std::make_shared<Executor>(std::forward<ExecutorArgs>(args)...)))
   {
-    m_core->get_executor()->set_builder(m_core);
+    m_core->executor()->set_builder(m_core);
   }
 
   template<class Task>
@@ -504,9 +502,9 @@ public:
     return m_core->create_source_node();
   }
 
-  auto get_node(int id) -> std::shared_ptr<node_core<Executor>>
+  auto node(int id) -> std::shared_ptr<node_core<Executor>>
   {
-    return m_core->get_node(id);
+    return m_core->node(id);
   }
 
   auto write_graphviz(std::ostream& out)
@@ -519,7 +517,7 @@ public:
     m_core->await_all();
   }
 
-  auto get_core() -> std::shared_ptr<builder_core<Executor>>
+  auto core() -> std::shared_ptr<builder_core<Executor>>
   {
     return m_core;
   }

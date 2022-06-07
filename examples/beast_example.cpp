@@ -100,8 +100,8 @@ public:
     if (!SSL_set_tlsext_host_name(m_stream.native_handle(),
                                   resolver_session.host().data()))
     {
-      beast::error_code ec {static_cast<int>(::ERR_get_error()),
-                            net::error::get_ssl_category()};
+      beast::error_code ec {static_cast<int>(::ERR_error()),
+                            net::error::ssl_category()};
 
       return fail(ec, "ssl_set_hostname");
     }
@@ -124,9 +124,9 @@ public:
 
   void on_resolve(const tcp::resolver::results_type& results)
   {
-    beast::get_lowest_layer(m_stream).expires_after(std::chrono::seconds(30));
+    beast::lowest_layer(m_stream).expires_after(std::chrono::seconds(30));
 
-    beast::get_lowest_layer(m_stream).async_connect(
+    beast::lowest_layer(m_stream).async_connect(
         results,
         beast::bind_front_handler(&http_request_session::on_connect, this));
   }
@@ -139,7 +139,7 @@ public:
     }
 
     // Set a timeout on the operation
-    beast::get_lowest_layer(m_stream).expires_after(std::chrono::seconds(30));
+    beast::lowest_layer(m_stream).expires_after(std::chrono::seconds(30));
 
     // Send the HTTP request to the remote host
     http::async_write(

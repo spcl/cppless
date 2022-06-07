@@ -19,7 +19,7 @@
 namespace cppless::aws
 {
 
-inline auto get_default_region() -> std::string
+inline auto default_region() -> std::string
 {
   return std::getenv("AWS_REGION");  // NOLINT
 }
@@ -82,17 +82,17 @@ public:
     return create_derived_key(key_id_env, key_secret_env, session_token);
   }
 
-  [[nodiscard]] auto get_hostname() const -> std::string
+  [[nodiscard]] auto hostname() const -> std::string
   {
     return m_hostname;
   }
 
-  [[nodiscard]] auto get_region() const -> std::string
+  [[nodiscard]] auto region() const -> std::string
   {
     return m_region;
   }
 
-  [[nodiscard]] auto get_service() const -> std::string
+  [[nodiscard]] auto service() const -> std::string
   {
     return m_service;
   }
@@ -118,22 +118,22 @@ public:
     // Cast self to derived type.
     const auto& request = static_cast<const DerivedRequest&>(*this);
 
-    ctx.update(request.get_http_request_method());
+    ctx.update(request.http_request_method());
     ctx.update("\n"s);
 
-    ctx.update(request.get_canonical_url());
+    ctx.update(request.canonical_url());
     ctx.update("\n"s);
 
-    ctx.update(request.get_canonical_query_string());
+    ctx.update(request.canonical_query_string());
     ctx.update("\n"s);
 
-    ctx.update(request.get_canonical_headers(client));
+    ctx.update(request.canonical_headers(client));
     ctx.update("\n"s);
 
-    ctx.update(request.get_signed_headers());
+    ctx.update(request.signed_headers());
     ctx.update("\n"s);
 
-    auto request_hash = request.get_payload_hash();
+    auto request_hash = request.payload_hash();
     std::string request_hash_hex;
     request_hash_hex.reserve(request_hash.size() * 2L);
     boost::algorithm::hex_lower(request_hash.begin(),
@@ -156,11 +156,11 @@ public:
 
     evp_sign_ctx ctx {p_key};
     ctx.update("AWS4-HMAC-SHA256\n");
-    auto date_time = request.get_date();
+    auto date_time = request.date();
     const auto date_length = 8;
     ctx.update(date_time + "\n");
     auto date = date_time.substr(0, date_length);
-    ctx.update(date + "/" + client.get_region() + "/" + client.get_service()
+    ctx.update(date + "/" + client.region() + "/" + client.service()
                + "/aws4_request\n");
     std::string canonical_hash_hex;
 
@@ -174,7 +174,7 @@ public:
   [[nodiscard]] auto compute_authorization_header(
       const client& client, const aws_v4_derived_key& key) const -> std::string
   {
-    auto signature = compute_signature(client, key.get_key());
+    auto signature = compute_signature(client, key.key());
     std::vector<unsigned char> signature_hex;
     boost::algorithm::hex_lower(signature.cbegin(),
                                 signature.cend(),
@@ -184,10 +184,10 @@ public:
     const auto& request = static_cast<const DerivedRequest&>(*this);
     const auto date_length = 8;
     std::stringstream ss;
-    ss << "AWS4-HMAC-SHA256 Credential=" << key.get_id() << "/"
-       << request.get_date().substr(0, date_length) << "/"
-       << client.get_region() << "/" << client.get_service()
-       << "/aws4_request, SignedHeaders=" << request.get_signed_headers()
+    ss << "AWS4-HMAC-SHA256 Credential=" << key.id() << "/"
+       << request.date().substr(0, date_length) << "/" << client.region() << "/"
+       << client.service()
+       << "/aws4_request, SignedHeaders=" << request.signed_headers()
        << ", Signature="
        << std::string {signature_hex.cbegin(), signature_hex.cend()};
     return ss.str();
@@ -200,14 +200,14 @@ public:
 
   // Default implementations
 
-  [[nodiscard]] auto get_canonical_headers(const client& client) const
+  [[nodiscard]] auto canonical_headers(const client& client) const
       -> std::string
   {
     const auto& request = static_cast<const DerivedRequest&>(*this);
-    return "host:" + client.get_hostname() + "\n"
-        + "x-amz-date:" + request.get_date() + "\n";
+    return "host:" + client.hostname() + "\n" + "x-amz-date:" + request.date()
+        + "\n";
   }
-  static auto get_signed_headers() -> std::string
+  static auto signed_headers() -> std::string
   {
     return "host;x-amz-date";
   }
@@ -235,28 +235,27 @@ public:
 
     auto auth_header = request.compute_authorization_header(client, key);
 
-    auto full_url =
-        "https://" + client.get_hostname() + request.get_canonical_url();
-    auto query_string = request.get_canonical_query_string();
+    auto full_url = "https://" + client.hostname() + request.canonical_url();
+    auto query_string = request.canonical_query_string();
     if (!query_string.empty()) {
       full_url += "?" + query_string;
     }
 
     nghttp2::asio_http2::header_map headers = {
-        {"X-Amz-Date", {request.get_date(), false}},
+        {"X-Amz-Date", {request.date(), false}},
         {"Authorization", {auth_header, true}},
     };
 
-    auto security_token = key.get_security_token();
+    auto security_token = key.security_token();
     if (security_token) {
       headers.insert({"X-Amz-Security-Token", {*security_token, true}});
     }
 
     const nghttp2::asio_http2::client::request* sess_req =
         sess.submit(ec,
-                    request.get_http_request_method(),
+                    request.http_request_method(),
                     full_url,
-                    request.get_payload(),
+                    request.payload(),
                     headers);
     sess_req->on_response(
         [&request](const nghttp2::asio_http2::client::response& res)
@@ -294,10 +293,10 @@ public:
       authorization_span->end();
     }
 
-    const auto method = request.get_http_request_method();
+    const auto method = request.http_request_method();
 
-    auto target = request.get_canonical_url();
-    auto query_string = request.get_query_string();
+    auto target = request.canonical_url();
+    auto query_string = request.query_string();
     if (!query_string.empty()) {
       target += "?" + query_string;
     }
@@ -305,14 +304,14 @@ public:
     m_request_session = std::make_shared<beast::http_request_session>(ioc, tls);
     boost::beast::http::request<boost::beast::http::string_body>& req =
         m_request_session->request();
-    req.body() = request.get_payload();
+    req.body() = request.payload();
     req.method(boost::beast::http::string_to_verb(method));
     req.target(target);
 
-    req.set(boost::beast::http::field::host, client.get_hostname());
-    req.set("X-Amz-Date", request.get_date());
+    req.set(boost::beast::http::field::host, client.hostname());
+    req.set("X-Amz-Date", request.date());
 
-    auto security_token = key.get_security_token();
+    auto security_token = key.security_token();
     if (security_token) {
       req.set("X-Amz-Security-Token", *security_token);
     }

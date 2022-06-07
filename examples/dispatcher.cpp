@@ -36,7 +36,7 @@ __attribute((weak)) auto main(int argc, char* argv[]) -> int
     int y = instance.wait_one();
     std::cout << "y = " << y << std::endl;
 
-    std::cout << t0_result.get_value() << std::endl;
-    std::cout << t1_result.get_value() << std::endl;
+    std::cout << t0_result.value() << std::endl;
+    std::cout << t1_result.value() << std::endl;
   }
 }

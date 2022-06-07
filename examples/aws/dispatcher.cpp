@@ -12,30 +12,31 @@
 #include <cppless/utils/tracing.hpp>
 #include <nlohmann/json.hpp>
 
-using dispatcher = cppless::dispatcher::aws_lambda_beast_dispatcher<>;
+using dispatcher = cppless::dispatcher::aws_lambda_beast_dispatcher<>::from_env;
 using task = cppless::task<dispatcher>;
 
 auto do_task(int i) -> int
 {
-  if (i == 0) {
-    return 4;
+  if (i <= 1) {
+    return i;
   }
   {
-    cppless::aws::lambda::client lambda_client;
-    auto key = lambda_client.create_derived_key_from_env();
-    dispatcher aws {lambda_client, key};
+    dispatcher aws;
 
-    cppless::shared_future<int> result;
+    cppless::shared_future<int> a;
+    cppless::shared_future<int> b;
 
     {
       auto instance = aws.create_instance();
 
-      task::sendable t0 = [=]() { return do_task(i - 1); };
-      instance.dispatch(t0, result, {}, std::nullopt);
+      task::sendable t0 = [=](int i) { return do_task(i); };
+      instance.dispatch(t0, a, std::make_tuple(i - 1), std::nullopt);
+      instance.dispatch(t0, b, std::make_tuple(i - 2), std::nullopt);
+      instance.wait_one();
       instance.wait_one();
     }
 
-    return result.get_value() + 1;
+    return a.value() + b.value();
   }
 }
 

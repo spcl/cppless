@@ -26,7 +26,7 @@ inline auto knapsack_dispatcher(
     auto child_items = items.subspan(1);
     std::vector<knapsack_item> items_vector(child_items.begin(),
                                             child_items.end());
-    typename Dispatcher::task::sendable task =
+    typename Dispatcher::template task<>::sendable task =
         [items_vector](int c, int v) mutable
     {
       std::span<knapsack_item> items(items_vector);
@@ -35,11 +35,14 @@ inline auto knapsack_dispatcher(
     };
 
     auto without_future = futures.emplace_back();
-    instance.dispatch(task, without_future, {c, v});
+    instance.dispatch(
+        task, without_future, std::make_tuple(c, v), std::nullopt);
 
     auto with_future = futures.emplace_back();
-    instance.dispatch(
-        task, with_future, {c - items[0].weight, v + items[0].value});
+    instance.dispatch(task,
+                      with_future,
+                      std::make_tuple(c - items[0].weight, v + items[0].value),
+                      std::nullopt);
   } else {
     knapsack_dispatcher<Dispatcher>(
         split, instance, items.subspan(1), futures, c, v);
@@ -53,13 +56,13 @@ inline auto knapsack_dispatcher(
   }
 }
 
-using dispatcher = cppless::dispatcher::aws_lambda_dispatcher<>;
+using dispatcher = cppless::dispatcher::aws_lambda_nghttp2_dispatcher<>;
 
 auto knapsack(dispatcher_args args) -> int
 {
   cppless::aws::lambda::client lambda_client;
   auto key = lambda_client.create_derived_key_from_env();
-  dispatcher aws {"", lambda_client, key};
+  dispatcher aws {lambda_client, key};
   dispatcher::instance instance = aws.create_instance();
 
   std::vector<cppless::shared_future<int>> futures;
@@ -76,7 +79,7 @@ auto knapsack(dispatcher_args args) -> int
 
   int res = std::numeric_limits<int>::min();
   for (auto& f : futures) {
-    res = std::max(f.get_value(), res);
+    res = std::max(f.value(), res);
   }
   return res;
 }

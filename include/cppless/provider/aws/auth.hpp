@@ -21,17 +21,17 @@ public:
   {
   }
 
-  [[nodiscard]] auto get_key() const -> const evp_p_key&
+  [[nodiscard]] auto key() const -> const evp_p_key&
   {
     return m_key;
   }
 
-  [[nodiscard]] auto get_id() const -> std::string
+  [[nodiscard]] auto id() const -> std::string
   {
     return m_id;
   }
 
-  [[nodiscard]] auto get_security_token() const -> std::optional<std::string>
+  [[nodiscard]] auto security_token() const -> std::optional<std::string>
   {
     return m_security_token;
   }

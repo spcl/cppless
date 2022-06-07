@@ -1,6 +1,7 @@
 #include <atomic>
 #include <span>
 #include <thread>
+#include <tuple>
 #include <vector>
 
 #include "./dispatcher.hpp"
@@ -14,7 +15,8 @@
 
 #include "./common.hpp"
 
-using dispatcher = cppless::dispatcher::aws_lambda_dispatcher<>;
+using dispatcher =
+    cppless::dispatcher::aws_lambda_nghttp2_dispatcher<>::from_env;
 namespace lambda = cppless::dispatcher::aws;
 constexpr unsigned int memory_limit = 2048;
 constexpr unsigned int ephemeral_storage = 64;
@@ -27,9 +29,7 @@ auto nqueens(dispatcher_args args) -> unsigned int
   auto size = args.size;
   auto prefix_length = args.prefix_length;
 
-  cppless::aws::lambda::client lambda_client;
-  auto key = lambda_client.create_derived_key_from_env();
-  dispatcher aws {"", lambda_client, key};
+  dispatcher aws;
   dispatcher::instance instance = aws.create_instance();
 
   auto prefixes = std::vector<unsigned char>();
@@ -44,8 +44,6 @@ auto nqueens(dispatcher_args args) -> unsigned int
                    prefixes);
 
   std::vector<cppless::shared_future<unsigned int>> futures(prefixes.size());
-  std::vector<std::vector<cppless::tracing_span>> span_containers(
-      prefixes.size());
 
   for (unsigned int i = 0; i < prefixes.size(); i += prefix_length) {
     std::vector<unsigned int> prefix(prefixes.begin() + i,
@@ -56,20 +54,15 @@ auto nqueens(dispatcher_args args) -> unsigned int
       std::copy(prefix.begin(), prefix.end(), scratchpad.begin());
       return nqueens_serial(prefix.size(), scratchpad);
     };
-    std::vector<cppless::tracing_span>& span_container = span_containers[i];
-    instance.dispatch(task, futures.emplace_back(), {}, span_container);
+    instance.dispatch(
+        task, futures.emplace_back(), std::make_tuple(), std::nullopt);
   }
   for ([[maybe_unused]] auto& f : futures) {
     instance.wait_one();
   }
   unsigned int res = 0;
   for (auto& f : futures) {
-    res += f.get_value();
-  }
-
-  for (auto& span_container : span_containers) {
-    nlohmann::json j = span_container;
-    std::cout << j.dump(2) << std::endl;
+    res += f.value();
   }
 
   return res;

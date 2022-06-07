@@ -22,7 +22,7 @@ namespace cppless::aws::lambda
 class client : public cppless::aws::client
 {
 public:
-  explicit client(const std::string& region = get_default_region())
+  explicit client(const std::string& region = default_region())
       : cppless::aws::client(
           "lambda." + region + ".amazonaws.com", region, "lambda")
   {
@@ -58,37 +58,37 @@ private:
   std::string m_payload = {};
 
 public:
-  [[nodiscard]] auto get_date() const -> std::string
+  [[nodiscard]] auto date() const -> std::string
   {
     return m_date;
   }
 
-  static auto get_http_request_method() -> std::string
+  static auto http_request_method() -> std::string
   {
     return "POST";
   }
 
-  [[nodiscard]] auto get_canonical_url() const -> std::string
+  [[nodiscard]] auto canonical_url() const -> std::string
   {
     return "/2015-03-31/functions/" + m_function_name + "/invocations";
   }
 
-  [[nodiscard]] auto get_canonical_query_string() const -> std::string
+  [[nodiscard]] auto canonical_query_string() const -> std::string
   {
     return "Qualifier=" + url_encode(m_qualifier);
   }
-  [[nodiscard]] auto get_query_string() const -> std::string
+  [[nodiscard]] auto query_string() const -> std::string
   {
     return "Qualifier=" + m_qualifier;
   }
-  [[nodiscard]] auto get_payload_hash() const -> std::vector<unsigned char>
+  [[nodiscard]] auto payload_hash() const -> std::vector<unsigned char>
   {
     evp_md_ctx ctx;
     ctx.update({m_payload.begin(), m_payload.end()});
     return ctx.final();
   }
 
-  [[nodiscard]] auto get_payload() const -> std::string
+  [[nodiscard]] auto payload() const -> std::string
   {
     return m_payload;
   }

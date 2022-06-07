@@ -105,13 +105,13 @@ auto add_cell_dispatcher(
   }
 }
 
-using dispatcher = cppless::dispatcher::aws_lambda_dispatcher<>;
+using dispatcher = cppless::dispatcher::aws_lambda_nghttp2_dispatcher<>;
 
 auto floorplan(dispatcher_args args) -> std::tuple<int, result_data>
 {
   cppless::aws::lambda::client lambda_client;
   auto key = lambda_client.create_derived_key_from_env();
-  dispatcher aws {"", lambda_client, key};
+  dispatcher aws {lambda_client, key};
   dispatcher::instance instance = aws.create_instance();
 
   std::vector<cppless::shared_future<result_data>> futures;
@@ -141,7 +141,7 @@ auto floorplan(dispatcher_args args) -> std::tuple<int, result_data>
     instance.wait_one();
   }
   for (auto& future : futures) {
-    result = combine(result, future.get_value());
+    result = combine(result, future.value());
   }
 
   return {futures.size(), result};

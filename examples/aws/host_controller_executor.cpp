@@ -27,9 +27,9 @@ __attribute((weak)) auto main(int /*argc*/, char* /*argv*/[]) -> int
   auto q = schedule(builder);
   auto asd = then(q, []() { return 12; });
   cppless::shared_future<int> m =
-      then(asd, [](int m) { return m + 1; })->get_future();
+      then(asd, [](int m) { return m + 1; })->future();
 
   builder.await_all();
 
-  std::cout << m.get_value() << std::endl;
+  std::cout << m.value() << std::endl;
 }

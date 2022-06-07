@@ -23,7 +23,7 @@ auto main(int argc, char* argv[]) -> int
   nghttp2::asio_http2::client::configure_tls_context(ec, tls);
 
   nghttp2::asio_http2::client::session sess(
-      io_service, tls, lambda_client.get_hostname(), "443");
+      io_service, tls, lambda_client.hostname(), "443");
 
   bool connected = false;
   sess.on_connect([&](const auto&) { connected = true; });

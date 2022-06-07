@@ -12,7 +12,7 @@
 
 #include "./common.hpp"
 
-using dispatcher = cppless::dispatcher::aws_lambda_dispatcher<>;
+using dispatcher = cppless::dispatcher::aws_lambda_nghttp2_dispatcher<>;
 using executor = cppless::executor::host_controller_executor<dispatcher>;
 namespace lambda = cppless::dispatcher::aws;
 constexpr unsigned int memory_limit = 2048;
@@ -64,12 +64,12 @@ auto nqueens(graph_args args) -> unsigned int
       std::copy(prefix.begin(), prefix.end(), scratchpad.begin());
       return nqueens_serial(prefix_length, scratchpad);
     };
-    futures.push_back(then<cpu_intensive_task>(start, task)->get_future());
+    futures.push_back(then<cpu_intensive_task>(start, task)->future());
   }
   builder.await_all();
   unsigned int res = 0;
   for (auto& f : futures) {
-    res += f.get_value();
+    res += f.value();
   }
 
   return res;

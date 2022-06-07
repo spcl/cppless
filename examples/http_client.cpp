@@ -25,7 +25,7 @@ auto main(int argc, char* argv[]) -> int
   tls.set_default_verify_paths();
 
   cppless::beast::resolver_session resolver(ioc);
-  resolver.run(lambda_client.get_hostname(), "443");
+  resolver.run(lambda_client.hostname(), "443");
 
   cppless::aws::lambda::beast_invocation_request req {
       function_name,

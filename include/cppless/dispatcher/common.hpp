@@ -53,12 +53,12 @@ public:
     m_res = res;
   }
 
-  auto get_value() -> Res&
+  auto value() -> Res&
   {
     return m_res.value();
   }
 
-  auto get_value() const -> const Res&
+  auto value() const -> const Res&
   {
     return m_res.value();
   }
@@ -86,14 +86,14 @@ public:
     m_future->set_value(res);
   }
 
-  auto get_value() -> Res&
+  auto value() -> Res&
   {
-    return m_future->get_value();
+    return m_future->value();
   }
 
-  auto get_value() const -> const Res&
+  auto value() const -> const Res&
   {
-    return m_future->get_value();
+    return m_future->value();
   }
 
 private:
@@ -110,19 +110,19 @@ public:
   {
   }
 
-  [[nodiscard]] auto get_id() const -> int
+  [[nodiscard]] auto id() const -> int
   {
     return m_id;
   }
 
-  auto get_value() -> Res&
+  auto value() -> Res&
   {
-    return m_f.get_value();
+    return m_f.value();
   }
 
-  auto get_value() const -> const Res&
+  auto value() const -> const Res&
   {
-    return m_f.get_value();
+    return m_f.value();
   }
 
 private:

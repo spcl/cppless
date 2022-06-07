@@ -38,7 +38,7 @@ public:
     virtual auto propagate_value() -> void = 0;
     virtual auto run(typename Dispatcher::instance& dispatcher) -> int = 0;
 
-    [[nodiscard]] auto get_dependency_count() const -> int
+    [[nodiscard]] auto dependency_count() const -> int
     {
       return m_dependency_count;
     }
@@ -109,10 +109,10 @@ public:
     {
     }
 
-    auto get_args() -> std::tuple<Args...>
+    auto args() -> std::tuple<Args...>
     {
       return map_tuple(
-          this->get_slots(),
+          this->slots(),
           []<class R, class T>(std::shared_ptr<graph::receiver_slot<R, T>> slot)
           {
             const std::optional<T>& arg = slot->get();
@@ -135,12 +135,12 @@ public:
     {
     }
 
-    auto get_result() -> Res&
+    auto result() -> Res&
     {
-      return m_future.get_value();
+      return m_future.value();
     }
 
-    auto get_future() -> cppless::shared_future<Res>&
+    auto future() -> cppless::shared_future<Res>&
     {
       return m_future;
     }
@@ -161,7 +161,7 @@ public:
     {
     }
 
-    auto get_future() -> std::shared_ptr<void>
+    auto future() -> std::shared_ptr<void>
     {
       return nullptr;
     }
@@ -185,7 +185,7 @@ public:
 
     auto run(typename Dispatcher::instance& dispatcher) -> int override
     {
-      typename Task::args arg_values = this->get_args();
+      typename Task::args arg_values = this->args();
 
       auto dispatch_span = this->create_child_tracing_span("dispatch");
       if (dispatch_span) {
@@ -193,7 +193,7 @@ public:
         m_dispatch_span->start();
       }
       int fut_id = dispatcher.dispatch(
-          this->get_task(), this->get_future(), arg_values, m_dispatch_span);
+          this->task(), this->future(), arg_values, m_dispatch_span);
 
       return fut_id;
     }
@@ -203,16 +203,15 @@ public:
         m_dispatch_span->end();
       }
 
-      typename Task::res& res_value = this->get_result();
+      typename Task::res& res_value = this->result();
       std::shared_ptr<graph::builder_core<host_controller_executor<Dispatcher>>>
-          builder = this->get_builder();
-      std::shared_ptr<executor_type> exec = builder->get_executor();
-      for (auto& successor :
-           graph::sender<host_controller_executor<Dispatcher>,
-                         typename Task::res>::get_successors())
+          builder = this->builder();
+      std::shared_ptr<executor_type> exec = builder->executor();
+      for (auto& successor : graph::sender<host_controller_executor<Dispatcher>,
+                                           typename Task::res>::successors())
       {
         successor->set_value(res_value);
-        exec->notify(successor->get_owning_node_id());
+        exec->notify(successor->owning_node_id());
       }
     }
 
@@ -245,12 +244,12 @@ public:
     auto propagate_value() -> void override
     {
       std::shared_ptr<graph::builder_core<host_controller_executor<Dispatcher>>>
-          builder = this->get_builder();
-      std::shared_ptr<executor_type> exec = builder->get_executor();
+          builder = this->builder();
+      std::shared_ptr<executor_type> exec = builder->executor();
       for (auto& successor : graph::sender<host_controller_executor<Dispatcher>,
-                                           void>::get_successors())
+                                           void>::successors())
       {
-        exec->notify(successor->get_owning_node_id());
+        exec->notify(successor->owning_node_id());
       }
     }
   };
@@ -281,9 +280,9 @@ public:
     // Populate the m_ready_nodes vector with all nodes that don't have any
     // dependencies
 
-    for (auto& node : builder->get_nodes()) {
-      if (node->get_dependency_count() == 0) {
-        m_ready_nodes.push_back(node->get_id());
+    for (auto& node : builder->nodes()) {
+      if (node->dependency_count() == 0) {
+        m_ready_nodes.push_back(node->id());
       }
     }
 
@@ -291,7 +290,7 @@ public:
       // Run all ready nodes
       while (!m_ready_nodes.empty()) {
         std::size_t node_id = m_ready_nodes.back();
-        auto node = builder->get_node(node_id);
+        auto node = builder->node(node_id);
         m_ready_nodes.pop_back();
 
         int future_id = node->run(m_instance);
@@ -303,7 +302,7 @@ public:
           node->propagate_value();
         } else {
           running_nodes.insert(node_id);
-          m_future_node_map[future_id] = node->get_id();
+          m_future_node_map[future_id] = node->id();
         }
       }
 
@@ -314,11 +313,11 @@ public:
       int finished = m_instance.wait_one();
 
       std::size_t finished_node_id = m_future_node_map[finished];
-      auto node = builder->get_node(finished_node_id);
+      auto node = builder->node(finished_node_id);
 
       m_finished_nodes++;
       finished_nodes++;
-      running_nodes.erase(node->get_id());
+      running_nodes.erase(node->id());
       // Propagate the value
       node->propagate_value();
       // This also adds the node to the ready nodes
@@ -333,10 +332,10 @@ public:
     }
 
     // Decrease dependency count
-    auto node = builder->get_node(id);
+    auto node = builder->node(id);
     node->decrement_dependency_count();
-    if (node->get_dependency_count() == 0) {
-      m_ready_nodes.push_back(node->get_id());
+    if (node->dependency_count() == 0) {
+      m_ready_nodes.push_back(node->id());
     }
   }
 

@@ -135,7 +135,7 @@ public:
     tls.set_default_verify_paths();
     nghttp2::asio_http2::client::configure_tls_context(ec, tls);
 
-    return {io_service, tls, lambda_client.get_hostname(), "443"};
+    return {io_service, tls, lambda_client.hostname(), "443"};
   }
 
   explicit aws_lambda_nghttp2_dispatcher_instance(
@@ -271,7 +271,7 @@ public:
       , m_key(dispatcher.key())
       , m_dispatcher(dispatcher)
   {
-    m_resolver.run(m_lambda_client.get_hostname(), "443");
+    m_resolver.run(m_lambda_client.hostname(), "443");
     m_tls.set_default_verify_paths();
   }
 
@@ -458,26 +458,58 @@ private:
   cppless::aws::aws_v4_derived_key m_key;
 };
 
+template<class Base>
+class aws_lambda_env_dispatcher : public Base
+{
+  static auto from_env() -> Base
+  {
+    cppless::aws::lambda::client lambda_client;
+    auto key = lambda_client.create_derived_key_from_env();
+    Base aws {lambda_client, key};
+    return aws;
+  }
+
+public:
+  aws_lambda_env_dispatcher()
+      : Base(from_env())
+  {
+  }
+
+  template<class SerializationArchive>
+  void serialize(SerializationArchive& ar)
+  {
+    ar();
+  }
+};
+
 template<class Archive = json_binary_archive>
 class aws_lambda_nghttp2_dispatcher : public base_aws_lambda_dispatcher<Archive>
 {
 public:
+  using instance = aws_lambda_nghttp2_dispatcher_instance<Archive>;
   using base_aws_lambda_dispatcher<Archive>::base_aws_lambda_dispatcher;
   auto create_instance() -> aws_lambda_nghttp2_dispatcher_instance<Archive>
   {
     return aws_lambda_nghttp2_dispatcher_instance<Archive> {*this};
   }
+
+  using from_env =
+      aws_lambda_env_dispatcher<aws_lambda_nghttp2_dispatcher<Archive>>;
 };
 
 template<class Archive = json_binary_archive>
 class aws_lambda_beast_dispatcher : public base_aws_lambda_dispatcher<Archive>
 {
 public:
+  using instance = aws_lambda_nghttp2_dispatcher_instance<Archive>;
   using base_aws_lambda_dispatcher<Archive>::base_aws_lambda_dispatcher;
   auto create_instance() -> aws_lambda_beast_dispatcher_instance<Archive>
   {
     return aws_lambda_beast_dispatcher_instance<Archive> {*this};
   }
+
+  using from_env =
+      aws_lambda_env_dispatcher<aws_lambda_beast_dispatcher<Archive>>;
 };
 
 }  // namespace cppless::dispatcher

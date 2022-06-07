@@ -49,7 +49,7 @@ auto connect(std::shared_ptr<SenderType>& output,
              std::shared_ptr<graph::task_node<Executor, InputTask>>& input)
 {
   input->increment_dependency_count();
-  auto input_slot = input->template get_slot<I>();
+  auto input_slot = input->template slot<I>();
   output->add_successor(input_slot);
 }
 
@@ -109,7 +109,7 @@ auto then(Args... args)
                                   CustomTaskType>::type::sendable
             input_task(input_thing);
 
-        auto builder = first_sender->get_builder();
+        auto builder = first_sender->builder();
         std::shared_ptr<graph::task_node<executor, decltype(input_task)>>
             input_node = builder->create_node(input_task);
         then_connect<0, executor>(input_node, first_sender, rest_senders...);
