@@ -216,23 +216,21 @@ public:
      * @param args - The arguments with which the invocation should occur
      * @return int - The id of the invocation
      */
-    template<class TaskType, class Res, class... Args>
+    template<class TaskType>
     auto dispatch(TaskType& t,
-                  cppless::shared_future<Res> result_future,
-                  std::tuple<Args...> args,
-                  std::optional<tracing_span_ref> span) -> int
+                  cppless::shared_future<typename TaskType::res> result_future,
+                  typename TaskType::args args,
+                  std::optional<tracing_span_ref> span = std::nullopt) -> int
     {
-      using specialized_task_data = task_data<TaskType, Args...>;
-
       // Get the function name
       auto function_name = t.identifier();
 
-      specialized_task_data data {t, args};
+      task_data data {t, args};
       std::string location = m_dispatcher.m_function_map[function_name];
       int id = m_next_id++;
-      auto cb = [this, result_future, id](Res result)
+      auto cb = [this, result_future, id](typename TaskType::res result)
       {
-        cppless::shared_future<Res> copy(result_future);
+        cppless::shared_future<typename TaskType::res> copy(result_future);
         std::lock_guard<std::mutex> lock(m_mutex);
         copy.set_value(result);
         m_finished.push_back(id);
@@ -242,7 +240,7 @@ public:
       {
         std::scoped_lock lock(m_mutex);
         std::thread thread =
-            execute<InputArchive, OutputArchive, specialized_task_data, Res>(
+            execute<InputArchive, OutputArchive, typename TaskType::res>(
                 location, data, std::move(cb));
         m_threads.push_back(std::move(thread));
       }

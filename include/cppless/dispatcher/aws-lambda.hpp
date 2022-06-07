@@ -187,14 +187,12 @@ public:
   auto operator=(aws_lambda_nghttp2_dispatcher_instance&& other) noexcept
       -> aws_lambda_nghttp2_dispatcher_instance& = delete;
 
-  template<class TaskType, class Res, class... Args>
+  template<class TaskType>
   auto dispatch(TaskType& t,
-                cppless::shared_future<Res> result_future,
-                std::tuple<Args...> args,
+                cppless::shared_future<typename TaskType::res> result_future,
+                typename TaskType::args args,
                 std::optional<tracing_span_ref> span = std::nullopt) -> int
   {
-    using specialized_task_data = task_data<TaskType, Args...>;
-
     int id = m_next_id++;
 
     std::string payload;
@@ -202,7 +200,7 @@ public:
     {
       scoped_tracing_span serialization_span(span, "serialization");
 
-      specialized_task_data data {t, args};
+      task_data data {t, args};
       payload = Archive::serialize(data);
     }
 
@@ -218,9 +216,9 @@ public:
         [id, result_future, this, span](const std::string& data) mutable
         {
           scoped_tracing_span deserialization_span(span, "deserialization");
-          cppless::shared_future<Res> copy(result_future);
+          cppless::shared_future<typename TaskType::res> copy(result_future);
 
-          Res result;
+          typename TaskType::res result;
           Archive::deserialize(data, result);
 
           copy.set_value(result);
@@ -306,14 +304,12 @@ public:
   auto operator=(aws_lambda_beast_dispatcher_instance&& other) noexcept
       -> aws_lambda_beast_dispatcher_instance& = delete;
 
-  template<class TaskType, class Res, class... Args>
+  template<class TaskType>
   auto dispatch(TaskType& t,
-                cppless::shared_future<Res> result_future,
-                std::tuple<Args...> args,
+                cppless::shared_future<typename TaskType::res> result_future,
+                typename TaskType::args args,
                 std::optional<tracing_span_ref> span = std::nullopt) -> int
   {
-    using specialized_task_data = task_data<TaskType, Args...>;
-
     int id = m_next_id++;
 
     std::string payload;
@@ -321,7 +317,7 @@ public:
     {
       scoped_tracing_span serialization_span(span, "serialization");
 
-      specialized_task_data data {t, args};
+      task_data data {t, args};
       payload = Archive::serialize(data);
     }
 
@@ -335,9 +331,9 @@ public:
         [id, result_future, this, span](const std::string& data) mutable
         {
           scoped_tracing_span deserialization_span(span, "deserialization");
-          cppless::shared_future<Res> copy(result_future);
+          cppless::shared_future<typename TaskType::res> copy(result_future);
 
-          Res result;
+          typename TaskType::res result;
           Archive::deserialize(data, result);
 
           copy.set_value(result);
