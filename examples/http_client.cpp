@@ -33,8 +33,12 @@ auto main(int argc, char* argv[]) -> int
       payload,
   };
 
-  req.on_result([](const std::string& data)
-                { std::cout << data << std::endl; });
+  auto cb = [](const cppless::aws::lambda::invocation_response& res)
+  {
+    std::cout << "request_id: " << res.request_id << std::endl;
+    std::cout << res.body << std::endl;
+  };
+  req.on_result(cb);
 
   cppless::tracing_span_container span_container;
   auto root = span_container.create_root("lambda_invocation");
