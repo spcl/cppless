@@ -28,9 +28,15 @@
 namespace cppless::dispatcher
 {
 
+/**
+ * @brief Types specific to the aws lambda dispatcher
+ */
 namespace aws
 {
 
+/**
+ * @brief The default config of a an aws lambda task
+ */
 struct default_config
 {
   constexpr static std::string_view description;
@@ -125,9 +131,10 @@ class aws_lambda_nghttp2_dispatcher_instance
 public:
   using id_type = int;
 
-  static auto create_session(boost::asio::io_service& io_service,
-                             const cppless::aws::lambda::client& lambda_client)
-      -> nghttp2::asio_http2::client::session
+  static auto create_sessions(boost::asio::io_service& io_service,
+                              const cppless::aws::lambda::client& lambda_client,
+                              int num_conns)
+      -> std::vector<nghttp2::asio_http2::client::session>
   {
     boost::system::error_code ec;
 
@@ -135,23 +142,36 @@ public:
     tls.set_default_verify_paths();
     nghttp2::asio_http2::client::configure_tls_context(ec, tls);
 
-    return {io_service, tls, lambda_client.hostname(), "443"};
+    std::vector<nghttp2::asio_http2::client::session> sessions;
+    sessions.reserve(num_conns);
+    for (int i = 0; i < num_conns; ++i) {
+      sessions.emplace_back(io_service, tls, lambda_client.hostname(), "443");
+    }
+
+    return sessions;
   }
 
+  constexpr static int num_conns = 16;
   explicit aws_lambda_nghttp2_dispatcher_instance(
       base_aws_lambda_dispatcher<Archive>& dispatcher)
       : m_lambda_client(dispatcher.lambda_client())
       , m_key(dispatcher.key())
-      , m_session(create_session(m_io_service, m_lambda_client))
+      , m_sessions(create_sessions(m_io_service, m_lambda_client, num_conns))
       , m_dispatcher(dispatcher)
   {
-    bool connected = false;
-    m_session.on_connect([&connected](const auto&) { connected = true; });
-    m_session.on_error(
-        [](const boost::system::error_code& ec)
-        { std::cerr << "Error: " << ec.message() << std::endl; });
+    int connected = 0;
+    bool error = false;
 
-    while (!connected) {
+    for (auto& session : m_sessions) {
+      session.on_connect([&connected](const auto&) { connected++; });
+      session.on_error(
+          [&error](const boost::system::error_code& ec)
+          {
+            error = true;
+            std::cerr << "Error: " << ec.message() << std::endl;
+          });
+    }
+    while (connected < num_conns && !error) {
       m_io_service.run_one();
     }
   }
@@ -159,7 +179,9 @@ public:
   // Destructor
   ~aws_lambda_nghttp2_dispatcher_instance()
   {
-    m_session.shutdown();
+    for (auto& session : m_sessions) {
+      session.shutdown();
+    }
     m_io_service.run();
   }
 
@@ -175,7 +197,7 @@ public:
       aws_lambda_nghttp2_dispatcher_instance&& other) noexcept
       : m_lambda_client(std::move(other.m_lambda_client))
       , m_key(std::move(other.m_key))
-      , m_session(std::move(other.m_session))
+      , m_sessions(std::move(other.m_sessions))
       , m_requests(std::move(other.m_requests))
       , m_finished(std::move(other.m_finished))
       , m_next_id(other.m_next_id)
@@ -213,19 +235,22 @@ public:
         m_requests.back();
 
     req_ref->on_result(
-        [id, result_future, this, span](const std::string& data) mutable
+        [id, result_future, this, span](
+            const cppless::aws::lambda::invocation_response& res) mutable
         {
           scoped_tracing_span deserialization_span(span, "deserialization");
           cppless::shared_future<typename TaskType::res> copy(result_future);
 
           typename TaskType::res result;
-          Archive::deserialize(data, result);
+          Archive::deserialize(res.body, result);
 
           copy.set_value(result);
 
           m_finished.insert(id);
         });
-    req_ref->submit(m_session, m_lambda_client, m_key, span);
+    auto& session = m_sessions[m_next_session];
+    m_next_session = (m_next_session + 1) % num_conns;
+    req_ref->submit(session, m_lambda_client, m_key, span);
 
     return id;
   }
@@ -244,7 +269,8 @@ private:
   boost::asio::io_service m_io_service;
   cppless::aws::lambda::client m_lambda_client;
   cppless::aws::aws_v4_derived_key m_key;
-  nghttp2::asio_http2::client::session m_session;
+  int m_next_session = 0;
+  std::vector<nghttp2::asio_http2::client::session> m_sessions;
 
   std::vector<std::unique_ptr<cppless::aws::lambda::nghttp2_invocation_request>>
       m_requests;
@@ -328,13 +354,14 @@ public:
     m_requests.push_back(req);
 
     req->on_result(
-        [id, result_future, this, span](const std::string& data) mutable
+        [id, result_future, this, span](
+            const cppless::aws::lambda::invocation_response& res) mutable
         {
           scoped_tracing_span deserialization_span(span, "deserialization");
           cppless::shared_future<typename TaskType::res> copy(result_future);
 
           typename TaskType::res result;
-          Archive::deserialize(data, result);
+          Archive::deserialize(res.body, result);
 
           copy.set_value(result);
 
