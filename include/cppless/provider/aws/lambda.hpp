@@ -3,6 +3,7 @@
 #include <iomanip>
 #include <span>
 #include <sstream>
+#include <string>
 #include <utility>
 #include <vector>
 
@@ -58,6 +59,12 @@ private:
   std::string m_payload = {};
 
 public:
+  auto set_tags(tracing_span_ref span) -> void
+  {
+    span.set_tag("date", m_date);
+    span.set_tag("function_name", m_qualifier);
+    span.set_tag("payload_size", std::to_string(m_payload.size()));
+  }
   [[nodiscard]] auto date() const -> std::string
   {
     return m_date;
@@ -94,15 +101,24 @@ public:
   }
 };
 
+struct invocation_response
+{
+  std::string body;
+  std::string request_id;  // x-amzn-RequestId
+} __attribute__((aligned(64)));
+
 class nghttp2_invocation_request
     : public base_invocation_request<
-          nghttp2_request<nghttp2_invocation_request, std::string>>
+          nghttp2_request<nghttp2_invocation_request, invocation_response>>
 {
 public:
   using base_invocation_request::base_invocation_request;
-  auto on_http2_response(const nghttp2::asio_http2::client::response& res)
-      -> void
+  auto on_http2_response(const nghttp2::asio_http2::client::response& res,
+                         std::optional<tracing_span_ref> span) -> void
   {
+    if (span) {
+      set_tags(*span);
+    }
     if (res.status_code() != 200) {
       res.on_data(
           [&res, buffer = std::vector<unsigned char> {}](
@@ -119,11 +135,25 @@ public:
     }
 
     res.on_data(
-        [this](const uint8_t* data, std::size_t len)
+        [this, &res, span](const uint8_t* data, std::size_t len) mutable
         {
           m_result.insert(m_result.end(), &data[0], &data[len]);  // NOLINT
           if (len == 0) {
-            m_result_callback(std::string {m_result.begin(), m_result.end()});
+            auto request_id_it = res.header().find("x-amzn-RequestId");
+            std::string request_id = request_id_it != res.header().end()
+                ? request_id_it->second.value
+                : "";
+            auto date_it = res.header().find("Date");
+            std::string date =
+                date_it != res.header().end() ? date_it->second.value : "";
+            if (span) {
+              span->set_tag("request_id", request_id);
+              span->set_tag("response_date", date);
+            }
+            m_result_callback({
+                .body = std::string {m_result.begin(), m_result.end()},
+                .request_id = request_id,
+            });
           }
         });
   }
@@ -134,22 +164,33 @@ private:
 
 class beast_invocation_request
     : public base_invocation_request<
-          beast_request<beast_invocation_request, std::string>>
+          beast_request<beast_invocation_request, invocation_response>>
 {
 public:
   using base_invocation_request::base_invocation_request;
   auto on_http1_response(
-      const boost::beast::http::response<boost::beast::http::string_body>& res)
-      -> void
+      const boost::beast::http::response<boost::beast::http::string_body>& res,
+      std::optional<tracing_span_ref> span) -> void
   {
+    if (span) {
+      set_tags(*span);
+    }
     if (res.result() != boost::beast::http::status::ok) {
       std::cerr << "status_code: " << res.result() << std::endl;
       std::cerr << "body: " << res.body() << std::endl;
 
       return;
     }
-
-    m_result_callback(res.body());
+    std::string request_id = std::string {res["x-amzn-RequestId"]};
+    std::string response_date = std::string {res["Date"]};
+    if (span) {
+      span->set_tag("request_id", request_id);
+      span->set_tag("response_date", response_date);
+    }
+    m_result_callback({
+        .body = res.body(),
+        .request_id = request_id,
+    });
   }
 };
 
