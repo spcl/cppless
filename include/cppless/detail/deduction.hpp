@@ -1,6 +1,12 @@
 #pragma once
 namespace cppless::detail
 {
+/**
+ * @brief Determines the canonical function type of a function, void if the
+ * function is not callable
+ *
+ * @tparam T The type of the function or method
+ */
 template<typename T>
 struct deduce_function
 {
