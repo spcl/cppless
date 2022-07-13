@@ -1,4 +1,5 @@
 #include <atomic>
+#include <optional>
 #include <span>
 #include <thread>
 #include <vector>
@@ -37,8 +38,8 @@ auto nqueens(graph_args args) -> unsigned int
 
   cppless::aws::lambda::client lambda_client;
   auto key = lambda_client.create_derived_key_from_env();
-  auto aws = std::make_shared<dispatcher>("", lambda_client, key);
-  cppless::graph::builder<executor> builder {aws};
+  auto aws = std::make_shared<dispatcher>(lambda_client, key);
+  cppless::graph::builder<executor> builder {std::nullopt, aws};
 
   auto prefixes = std::vector<unsigned char>();
   prefixes.reserve(pow(size, prefix_length));
