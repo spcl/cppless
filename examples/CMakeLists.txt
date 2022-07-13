@@ -27,8 +27,11 @@ add_example(alt_entry)
 add_example(dispatcher)
 add_example(graph)
 add_example(http_client)
+add_example(http2_client)
 add_example(lambda_reflection)
 add_example(merge_sort)
+add_example(get_object)
+add_example(hole_punching)
 
 add_folders(Example)
 

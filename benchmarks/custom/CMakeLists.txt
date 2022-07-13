@@ -12,3 +12,5 @@ endif()
 find_package(ut REQUIRED)
 
 add_subdirectory(serialization)
+add_subdirectory(ray)
+add_subdirectory(pi)
