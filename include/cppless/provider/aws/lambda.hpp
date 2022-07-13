@@ -107,9 +107,16 @@ struct invocation_response
   std::string request_id;  // x-amzn-RequestId
 } __attribute__((aligned(64)));
 
+struct invocation_error_too_many_requests
+{
+};
+
+using invocation_error = std::variant<int, invocation_error_too_many_requests>;
+
 class nghttp2_invocation_request
-    : public base_invocation_request<
-          nghttp2_request<nghttp2_invocation_request, invocation_response>>
+    : public base_invocation_request<nghttp2_request<nghttp2_invocation_request,
+                                                     invocation_response,
+                                                     invocation_error>>
 {
 public:
   using base_invocation_request::base_invocation_request;
@@ -120,15 +127,24 @@ public:
       set_tags(*span);
     }
     if (res.status_code() != 200) {
+      auto on_error = [&res, this](const std::vector<unsigned char>& body)
+      {
+        if (res.status_code() == 429) {
+          m_error_callback(invocation_error_too_many_requests {});
+          return;
+        }
+        std::cerr << "status_code: " << res.status_code() << std::endl;
+        std::cerr << "buffer: " << std::endl;
+        std::cerr << body.data() << std::endl;
+      };
+
       res.on_data(
-          [&res, buffer = std::vector<unsigned char> {}](
+          [on_error, buffer = std::vector<unsigned char> {}](
               const uint8_t* data, std::size_t len) mutable
           {
             buffer.insert(buffer.end(), &data[0], &data[len]);  // NOLINT
             if (len == 0) {
-              std::cerr << "status_code: " << res.status_code() << std::endl;
-              std::cerr << "buffer: " << std::endl;
-              std::cerr << buffer.data() << std::endl;
+              on_error(buffer);
             }
           });
       return;
@@ -163,8 +179,9 @@ private:
 };
 
 class beast_invocation_request
-    : public base_invocation_request<
-          beast_request<beast_invocation_request, invocation_response>>
+    : public base_invocation_request<beast_request<beast_invocation_request,
+                                                   invocation_response,
+                                                   invocation_error>>
 {
 public:
   using base_invocation_request::base_invocation_request;

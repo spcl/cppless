@@ -103,7 +103,7 @@ private:
   std::string m_service;
 };
 
-template<class DerivedRequest, class ResultType>
+template<class DerivedRequest, class ResultType, class ErrorType>
 class base_request
 {
 public:
@@ -196,6 +196,11 @@ public:
     m_result_callback = std::move(callback);
   }
 
+  auto on_error(std::function<void(const ErrorType&)> callback)
+  {
+    m_error_callback = std::move(callback);
+  }
+
   // Default implementations
 
   [[nodiscard]] auto canonical_headers(const client& client) const
@@ -212,11 +217,13 @@ public:
 
 protected:
   std::function<void(const ResultType&)> m_result_callback;  // NOLINT
+  std::function<void(const ErrorType&)> m_error_callback;  // NOLINT
 };
 
 // nghttp2
-template<class DerivedRequest, class ResultType>
-class nghttp2_request : public base_request<DerivedRequest, ResultType>
+template<class DerivedRequest, class ResultType, class ErrorType>
+class nghttp2_request
+    : public base_request<DerivedRequest, ResultType, ErrorType>
 {
 public:
   auto submit(nghttp2::asio_http2::client::session& sess,
@@ -266,32 +273,14 @@ public:
                     headers);
     sess_req->on_response(
         [&request, span](const nghttp2::asio_http2::client::response& res)
-        {
-          if (res.status_code() != 200) {
-            res.on_data(
-                [&res, buffer = std::vector<unsigned char> {}](
-                    const uint8_t* data, std::size_t len) mutable
-                {
-                  buffer.insert(buffer.end(), &data[0], &data[len]);  // NOLINT
-                  if (len == 0) {
-                    std::cerr << "status_code: " << res.status_code()
-                              << std::endl;
-                    std::cerr << "buffer: " << std::endl;
-                    std::cerr << buffer.data() << std::endl;
-                  }
-                });
-            return;
-          }
-
-          request.on_http2_response(res, span);
-        });
+        { request.on_http2_response(res, span); });
     return sess_req;
   }
 };
 
 // beast
-template<class DerivedRequest, class ResultType>
-class beast_request : public base_request<DerivedRequest, ResultType>
+template<class DerivedRequest, class ResultType, class ErrorType>
+class beast_request : public base_request<DerivedRequest, ResultType, ErrorType>
 {
 public:
   auto submit(beast::resolver_session& resolver_session,

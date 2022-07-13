@@ -1,5 +1,6 @@
 #pragma once
 
+#include <memory>
 #include <set>
 #include <sstream>
 #include <string>
@@ -199,8 +200,10 @@ public:
       , m_key(std::move(other.m_key))
       , m_sessions(std::move(other.m_sessions))
       , m_requests(std::move(other.m_requests))
+      , m_spans(std::move(other.m_spans))
       , m_finished(std::move(other.m_finished))
-      , m_next_id(other.m_next_id)
+      , m_started(std::move(other.m_started))
+      , m_completed(other.m_completed)
       , m_dispatcher(other.m_dispatcher)
   {
   }
@@ -215,8 +218,6 @@ public:
                 typename TaskType::args args,
                 std::optional<tracing_span_ref> span = std::nullopt) -> int
   {
-    int id = m_next_id++;
-
     std::string payload;
 
     {
@@ -226,31 +227,56 @@ public:
       payload = Archive::serialize(data);
     }
 
-    std::unique_ptr<cppless::aws::lambda::nghttp2_invocation_request> req =
+    int id = m_started++;
+    auto req =
         std::make_unique<cppless::aws::lambda::nghttp2_invocation_request>(
             task_function_name(t), "$LATEST", payload);
-
     m_requests.push_back(std::move(req));
-    std::unique_ptr<cppless::aws::lambda::nghttp2_invocation_request>& req_ref =
-        m_requests.back();
+    m_spans.push_back(span);
 
-    req_ref->on_result(
-        [id, result_future, this, span](
-            const cppless::aws::lambda::invocation_response& res) mutable
-        {
-          scoped_tracing_span deserialization_span(span, "deserialization");
-          cppless::shared_future<typename TaskType::res> copy(result_future);
+    auto submit_req =
+        [this](
+            std::unique_ptr<cppless::aws::lambda::nghttp2_invocation_request>&
+                req,
+            std::optional<tracing_span_ref> span)
+    {
+      auto& session = m_sessions[m_next_session];
+      m_next_session = (m_next_session + 1) % num_conns;
+      req->submit(session, m_lambda_client, m_key, span);
+    };
 
-          typename TaskType::res result;
-          Archive::deserialize(res.body, result);
+    auto cb = [this, id, result_future, span](
+                  const cppless::aws::lambda::invocation_response& res) mutable
+    {
+      scoped_tracing_span deserialization_span(span, "deserialization");
+      cppless::shared_future<typename TaskType::res> copy(result_future);
 
-          copy.set_value(result);
+      typename TaskType::res result;
+      Archive::deserialize(res.body, result);
 
-          m_finished.insert(id);
-        });
-    auto& session = m_sessions[m_next_session];
-    m_next_session = (m_next_session + 1) % num_conns;
-    req_ref->submit(session, m_lambda_client, m_key, span);
+      copy.set_value(result);
+
+      m_finished.insert(id);
+      m_completed++;
+    };
+
+    auto err_cb = [this, submit_req, id](
+                      const cppless::aws::lambda::invocation_error& err)
+    {
+      if (std::holds_alternative<
+              cppless::aws::lambda::invocation_error_too_many_requests>(err))
+      {
+        submit_req(m_requests[id], m_spans[id]);
+      } else {
+        std::cerr << "Error." << std::endl;
+      }
+    };
+
+    auto& req_ref = m_requests.back();
+    req_ref->on_result(cb);
+    req_ref->on_error(err_cb);
+
+    submit_req(req_ref, span);
 
     return id;
   }
@@ -274,9 +300,12 @@ private:
 
   std::vector<std::unique_ptr<cppless::aws::lambda::nghttp2_invocation_request>>
       m_requests;
+  std::vector<std::optional<tracing_span_ref>> m_spans;
   std::unordered_set<int> m_finished;
 
-  int m_next_id = 0;
+  std::vector<int> m_retry_queue;
+  int m_started = 0;
+  int m_completed = 0;
 
   base_aws_lambda_dispatcher<Archive>& m_dispatcher;
 };

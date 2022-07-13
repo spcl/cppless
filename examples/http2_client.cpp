@@ -111,7 +111,7 @@ auto main(int argc, char* argv[]) -> int
     auto err_cb = [&, id](const cppless::aws::lambda::invocation_error& err)
     {
       if (std::holds_alternative<
-              cppless::aws::lambda::invocation_error_roo_many_requests>(err))
+              cppless::aws::lambda::invocation_error_too_many_requests>(err))
       {
         if (started > completed) {
           resend_queue.push_back(id);
