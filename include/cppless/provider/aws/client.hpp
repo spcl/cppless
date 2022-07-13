@@ -109,7 +109,8 @@ class base_request
 public:
   base_request() = default;
 
-  [[nodiscard]] auto compute_canonical_hash(const client& client) const
+  [[nodiscard]] auto compute_canonical_hash(const std::string& payload_hash_hex,
+                                            const client& client) const
       -> std::vector<unsigned char>
   {
     using namespace std::string_literals;
@@ -133,23 +134,17 @@ public:
     ctx.update(request.signed_headers());
     ctx.update("\n"s);
 
-    auto request_hash = request.payload_hash();
-    std::string request_hash_hex;
-    request_hash_hex.reserve(request_hash.size() * 2L);
-    boost::algorithm::hex_lower(request_hash.begin(),
-                                request_hash.end(),
-                                std::back_inserter(request_hash_hex));
-
-    ctx.update(request_hash_hex);
+    ctx.update(payload_hash_hex);
 
     return ctx.final();
   }
 
-  [[nodiscard]] auto compute_signature(const client& client,
+  [[nodiscard]] auto compute_signature(const std::string& payload_hash_hex,
+                                       const client& client,
                                        const evp_p_key& p_key) const
       -> std::vector<unsigned char>
   {
-    auto canonical_hash = compute_canonical_hash(client);
+    auto canonical_hash = compute_canonical_hash(payload_hash_hex, client);
 
     // Cast self to derived type.
     const auto& request = static_cast<const DerivedRequest&>(*this);
@@ -172,16 +167,19 @@ public:
   }
 
   [[nodiscard]] auto compute_authorization_header(
-      const client& client, const aws_v4_derived_key& key) const -> std::string
+      const std::string& payload_hash_hex,
+      const client& client,
+      const aws_v4_derived_key& key) const -> std::string
   {
-    auto signature = compute_signature(client, key.key());
+    // Cast self to derived type.
+    const auto& request = static_cast<const DerivedRequest&>(*this);
+
+    auto signature = compute_signature(payload_hash_hex, client, key.key());
     std::vector<unsigned char> signature_hex;
     boost::algorithm::hex_lower(signature.cbegin(),
                                 signature.cend(),
                                 std::back_inserter(signature_hex));
 
-    // Cast self to derived type.
-    const auto& request = static_cast<const DerivedRequest&>(*this);
     const auto date_length = 8;
     std::stringstream ss;
     ss << "AWS4-HMAC-SHA256 Credential=" << key.id() << "/"
@@ -193,7 +191,7 @@ public:
     return ss.str();
   }
 
-  auto on_result(const std::function<void(const ResultType&)>& callback)
+  auto on_result(std::function<void(const ResultType&)> callback)
   {
     m_result_callback = std::move(callback);
   }
@@ -233,7 +231,15 @@ public:
 
     auto& request = static_cast<DerivedRequest&>(*this);
 
-    auto auth_header = request.compute_authorization_header(client, key);
+    auto payload_hash = request.payload_hash();
+    std::string payload_hash_hex;
+    payload_hash_hex.reserve(payload_hash.size() * 2L);
+    boost::algorithm::hex_lower(payload_hash.begin(),
+                                payload_hash.end(),
+                                std::back_inserter(payload_hash_hex));
+
+    auto auth_header =
+        request.compute_authorization_header(payload_hash_hex, client, key);
 
     auto full_url = "https://" + client.hostname() + request.canonical_url();
     auto query_string = request.canonical_query_string();
@@ -243,6 +249,7 @@ public:
 
     nghttp2::asio_http2::header_map headers = {
         {"X-Amz-Date", {request.date(), false}},
+        {"X-Amz-Content-Sha256", {payload_hash_hex, false}},
         {"Authorization", {auth_header, true}},
     };
 
@@ -258,8 +265,26 @@ public:
                     request.payload(),
                     headers);
     sess_req->on_response(
-        [&request](const nghttp2::asio_http2::client::response& res)
-        { request.on_http2_response(res); });
+        [&request, span](const nghttp2::asio_http2::client::response& res)
+        {
+          if (res.status_code() != 200) {
+            res.on_data(
+                [&res, buffer = std::vector<unsigned char> {}](
+                    const uint8_t* data, std::size_t len) mutable
+                {
+                  buffer.insert(buffer.end(), &data[0], &data[len]);  // NOLINT
+                  if (len == 0) {
+                    std::cerr << "status_code: " << res.status_code()
+                              << std::endl;
+                    std::cerr << "buffer: " << std::endl;
+                    std::cerr << buffer.data() << std::endl;
+                  }
+                });
+            return;
+          }
+
+          request.on_http2_response(res, span);
+        });
     return sess_req;
   }
 };
@@ -282,12 +307,20 @@ public:
 
     auto& request = static_cast<DerivedRequest&>(*this);
 
+    auto payload_hash = request.payload_hash();
+    std::string payload_hash_hex;
+    payload_hash_hex.reserve(payload_hash.size() * 2L);
+    boost::algorithm::hex_lower(payload_hash.begin(),
+                                payload_hash.end(),
+                                std::back_inserter(payload_hash_hex));
+
     std::optional<tracing_span_ref> authorization_span;
     if (span) {
       authorization_span.emplace(span->create_child("authorization").start());
     }
 
-    auto auth_header = request.compute_authorization_header(client, key);
+    auto auth_header =
+        request.compute_authorization_header(payload_hash_hex, client, key);
 
     if (authorization_span) {
       authorization_span->end();
@@ -309,6 +342,7 @@ public:
     req.target(target);
 
     req.set(boost::beast::http::field::host, client.hostname());
+    req.set("X-Amz-Content-Sha256", payload_hash_hex);
     req.set("X-Amz-Date", request.date());
 
     auto security_token = key.security_token();
@@ -324,9 +358,18 @@ public:
     req.keep_alive(/*value=*/false);
 
     m_request_session->set_callback(
-        [&request](
+        [&request, span](
             const boost::beast::http::response<boost::beast::http::string_body>&
-                res) { request.on_http1_response(res); });
+                res)
+        {
+          if (res.result() != boost::beast::http::status::ok) {
+            std::cerr << "status_code: " << res.result() << std::endl;
+            std::cerr << "body: " << res.body() << std::endl;
+
+            return;
+          }
+          request.on_http1_response(res, span);
+        });
 
     std::optional<tracing_span_ref> request_span;
     if (span) {
