@@ -95,7 +95,7 @@ auto then_connect(
   }
 }
 
-template<class CustomTaskType = void, class... Args>
+template<class Config, class... Args>
 auto then(Args... args)
 {
   return tail_apply(
@@ -104,14 +104,30 @@ auto then(Args... args)
           std::shared_ptr<FirstSenderType> first_sender,
           RestSenderTypes... rest_senders) {
         using executor = typename FirstSenderType::executor;
-        typename std::conditional<std::is_void<CustomTaskType>::value,
-                                  typename executor::task,
-                                  CustomTaskType>::type::sendable
-            input_task(input_thing);
+        auto task =
+            executor::template lambda_factory<Config>::create(input_thing);
 
         auto builder = first_sender->builder();
-        std::shared_ptr<graph::task_node<executor, decltype(input_task)>>
-            input_node = builder->create_node(input_task);
+        auto input_node = builder->create_node(task);
+        then_connect<0, executor>(input_node, first_sender, rest_senders...);
+        return input_node;
+      },
+      std::forward<Args>(args)...);
+}
+
+template<class... Args>
+auto then(Args... args)
+{
+  return tail_apply(
+      []<class InputTask, class FirstSenderType, class... RestSenderTypes>(
+          InputTask input_thing,
+          std::shared_ptr<FirstSenderType> first_sender,
+          RestSenderTypes... rest_senders) {
+        using executor = typename FirstSenderType::executor;
+        auto task = executor::default_lambda_factory::create(input_thing);
+
+        auto builder = first_sender->builder();
+        auto input_node = builder->create_node(task);
         then_connect<0, executor>(input_node, first_sender, rest_senders...);
         return input_node;
       },

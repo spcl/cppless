@@ -9,7 +9,6 @@
 #include <cppless/dispatcher/common.hpp>
 
 using dispatcher = cppless::dispatcher::aws_lambda_beast_dispatcher<>::from_env;
-using task = cppless::task<dispatcher>;
 
 auto dispatcher_fib(int i) -> int
 {
@@ -19,20 +18,18 @@ auto dispatcher_fib(int i) -> int
   {
     dispatcher aws;
 
-    cppless::shared_future<int> a;
-    cppless::shared_future<int> b;
+    int a, b;
 
     {
       auto instance = aws.create_instance();
 
-      task::sendable t0 = [=](int i) { return dispatcher_fib(i); };
-      instance.dispatch(t0, a, {i - 1});
-      instance.dispatch(t0, b, {i - 2});
-      instance.wait_one();
-      instance.wait_one();
+      auto t = [=](int i) { return dispatcher_fib(i); };
+      cppless::dispatch(instance, t, a, {i - 1});
+      cppless::dispatch(instance, t, b, {i - 2});
+      cppless::wait(instance, 2);
     }
 
-    return a.value() + b.value();
+    return a + b;
   }
 }
 

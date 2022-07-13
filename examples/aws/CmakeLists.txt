@@ -14,3 +14,7 @@ aws_lambda_serverless_target(host_controller_executor_aws)
 add_executable(dispatcher_aws "dispatcher.cpp")
 aws_lambda_target(dispatcher_aws)
 aws_lambda_serverless_target(dispatcher_aws)
+
+add_executable(hole_punching_aws "hole_punching.cpp")
+aws_lambda_target(hole_punching_aws)
+aws_lambda_serverless_target(hole_punching_aws)

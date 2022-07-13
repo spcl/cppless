@@ -1,4 +1,5 @@
 #pragma once
+#include <tuple>
 namespace cppless::detail
 {
 /**
@@ -95,4 +96,23 @@ struct deduce_function<R (G::*)(Args...) const volatile& noexcept>
 {
   using type = R(Args...);
 };
+
+template<typename X>
+struct function_args;
+
+template<typename R, typename... T>
+struct function_args<R(T...)>
+{
+  using type = std::tuple<T...>;
+};
+
+template<typename X>
+struct function_res;
+
+template<typename R, typename... T>
+struct function_res<R(T...)>
+{
+  using type = R;
+};
+
 }  // namespace cppless::detail

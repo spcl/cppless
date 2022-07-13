@@ -1,4 +1,4 @@
-set(AWS_LAMBDA_PACKAGING_SCRIPT "${CMAKE_SOURCE_DIR}/tools/packagerpy/packager.py")
+set(AWS_LAMBDA_PACKAGING_SCRIPT "${CMAKE_SOURCE_DIR}/tools/packagerpy/packager.py" CACHE FILEPATH "")
 function(aws_lambda_package_target target)
     if (NOT CPPLESS_SERVERLESS)
         return()

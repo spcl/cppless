@@ -5,6 +5,7 @@
 #include <unordered_set>
 
 #include <cppless/dispatcher/common.hpp>
+#include <cppless/dispatcher/sendable.hpp>
 #include <cppless/graph/graph.hpp>
 #include <cppless/utils/tracing.hpp>
 #include <cppless/utils/tuple.hpp>
@@ -19,10 +20,10 @@ class host_controller_executor
   using executor_type = host_controller_executor<Dispatcher>;
 
 public:
-  using task = typename Dispatcher::template task<>;
+  using default_lambda_factory = lambda_task_factory<Dispatcher>;
 
   template<class Config>
-  using custom_task = typename Dispatcher::template task<Config>;
+  using lambda_factory = lambda_task_factory<Dispatcher, Config>;
 
   class node_core : public graph::basic_node_core<executor_type>
   {
@@ -192,8 +193,8 @@ public:
         m_dispatch_span.emplace(*dispatch_span);
         m_dispatch_span->start();
       }
-      int fut_id = dispatcher.dispatch(
-          this->task(), this->future(), arg_values, m_dispatch_span);
+      int fut_id = dispatcher.dispatch_impl(
+          this->task(), this->future().value(), arg_values, m_dispatch_span);
 
       return fut_id;
     }

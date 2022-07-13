@@ -6,7 +6,8 @@
 
 using dispatcher =
     cppless::dispatcher::aws_lambda_nghttp2_dispatcher<>::from_env;
-using task = cppless::task<dispatcher>;
+namespace lambda = cppless::dispatcher::aws;
+using config = lambda::config<lambda::with_memory<42>>;
 
 auto is_inside(long iterations) -> double
 {
@@ -49,17 +50,14 @@ auto main(int argc, char* argv[]) -> int
   dispatcher aws;
   auto instance = aws.create_instance();
 
-  std::vector<cppless::shared_future<double>> results(np);
+  std::vector<double> results(np);
 
-  task::sendable t0 = [=](long iterations) { return is_inside(iterations); };
   for (int i = 0; i < np; i++) {
-    instance.dispatch(t0, results[i], {n / np});
+    auto fn = [=](long iterations) { return is_inside(iterations); };
+    cppless::dispatch<config>(instance, fn, results[i], {n / np});
   }
+  cppless::wait(instance, np);
 
-  double pi = 0;
-  for (int i = 0; i < np; i++) {
-    int m = instance.wait_one();
-    pi += results[m].value() / np;
-  }
+  double pi = std::accumulate(results.begin(), results.end(), 0) / n;
   std::cout << pi << std::endl;
 }

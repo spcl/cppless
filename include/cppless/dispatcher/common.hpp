@@ -19,12 +19,17 @@
 #include <cereal/archives/binary.hpp>
 #include <cereal/archives/json.hpp>
 #include <cereal/cereal.hpp>
+#include <cppless/detail/deduction.hpp>
 #include <cppless/utils/fdstream.hpp>
+#include <cppless/utils/tracing.hpp>
 #include <sys/wait.h>
 #include <unistd.h>
 
+#include "cppless/dispatcher/sendable.hpp"
+
 namespace cppless
 {
+
 /**
  * @brief Represents a value which will be set in the future
  *
@@ -299,5 +304,53 @@ public:
     }
   }
 };
+
+template<class Task, class DispatcherInstance>
+inline auto dispatch(DispatcherInstance& instance,
+                     Task& task,
+                     typename Task::res& result_target,
+                     typename Task::args args,
+                     std::optional<tracing_span_ref> span = std::nullopt)
+{
+  return instance.dispatch_impl(task, result_target, args, span);
+}
+
+template<class Config,
+         class Fn,
+         class DispatcherInstance,
+         class FnType =
+             typename detail::deduce_function<decltype(&Fn::operator())>::type>
+inline auto dispatch(DispatcherInstance& instance,
+                     Fn& fn,
+                     typename detail::function_res<FnType>::type& result_target,
+                     typename detail::function_args<FnType>::type args,
+                     std::optional<tracing_span_ref> span = std::nullopt)
+{
+  auto task = lambda_task_factory<typename DispatcherInstance::dispatcher_type,
+                                  Config>::create(fn);
+  return instance.dispatch_impl(task, result_target, args, span);
+}
+
+template<class Fn,
+         class DispatcherInstance,
+         class FnType =
+             typename detail::deduce_function<decltype(&Fn::operator())>::type>
+inline auto dispatch(DispatcherInstance& instance,
+                     Fn& fn,
+                     typename detail::function_res<FnType>::type& result_target,
+                     typename detail::function_args<FnType>::type args,
+                     std::optional<tracing_span_ref> span = std::nullopt)
+{
+  return dispatch<typename DispatcherInstance::dispatcher_type::default_config>(
+      instance, fn, result_target, args, span);
+}
+
+template<class DispatcherInstance>
+inline auto wait(DispatcherInstance& instance, int n)
+{
+  for (int i = 0; i < n; i++) {
+    instance.wait_one();
+  }
+}
 
 }  // namespace cppless

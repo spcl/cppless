@@ -20,9 +20,9 @@ using dispatcher =
 namespace lambda = cppless::dispatcher::aws;
 constexpr unsigned int memory_limit = 2048;
 constexpr unsigned int ephemeral_storage = 64;
-using cpu_intensive_task =
-    dispatcher::task<lambda::with_memory<memory_limit>,
-                     lambda::with_ephemeral_storage<ephemeral_storage>>;
+using cpu_intensive =
+    lambda::config<lambda::with_memory<memory_limit>,
+                   lambda::with_ephemeral_storage<ephemeral_storage>>;
 
 auto nqueens(dispatcher_args args) -> unsigned int
 {
@@ -30,7 +30,7 @@ auto nqueens(dispatcher_args args) -> unsigned int
   auto prefix_length = args.prefix_length;
 
   dispatcher aws;
-  dispatcher::instance instance = aws.create_instance();
+  auto instance = aws.create_instance();
 
   auto prefixes = std::vector<unsigned char>();
   prefixes.reserve(pow(size, prefix_length));
@@ -43,26 +43,23 @@ auto nqueens(dispatcher_args args) -> unsigned int
                    std::span<unsigned char> {scratchpad},
                    prefixes);
 
-  std::vector<cppless::shared_future<unsigned int>> futures(prefixes.size());
+  std::vector<unsigned int> futures(prefixes.size());
 
   for (unsigned int i = 0; i < prefixes.size(); i += prefix_length) {
     std::vector<unsigned int> prefix(prefixes.begin() + i,
                                      prefixes.begin() + i + prefix_length);
-    cpu_intensive_task::sendable task = [prefix, size]
+    auto task = [prefix, size]
     {
       auto scratchpad = std::vector<unsigned char>(size);
       std::copy(prefix.begin(), prefix.end(), scratchpad.begin());
       return nqueens_serial(prefix.size(), scratchpad);
     };
-    instance.dispatch(
-        task, futures.emplace_back(), std::make_tuple(), std::nullopt);
+    cppless::dispatch<cpu_intensive>(instance, task, futures[i], {});
   }
-  for ([[maybe_unused]] auto& f : futures) {
-    instance.wait_one();
-  }
+  cppless::wait(instance, futures.size());
   unsigned int res = 0;
   for (auto& f : futures) {
-    res += f.value();
+    res += f;
   }
 
   return res;

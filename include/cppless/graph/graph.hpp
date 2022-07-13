@@ -44,7 +44,7 @@ public:
   auto operator=(const basic_node_core&) -> basic_node_core& = delete;
   auto operator=(basic_node_core&&) -> basic_node_core& = delete;
 
-  auto create_child_tracing_span(std::string_view operation_name)
+  auto create_child_tracing_span(std::string operation_name)
       -> std::optional<tracing_span_ref>
   {
     if (m_span) {
@@ -53,7 +53,7 @@ public:
     return std::nullopt;
   }
 
-  auto create_scoped_child_tracing_span(std::string_view operation_name)
+  auto create_scoped_child_tracing_span(std::string operation_name)
       -> scoped_tracing_span
   {
     return {m_span, operation_name};
@@ -304,8 +304,8 @@ class basic_task_node
 {
 public:
   using task_type = Task;
-  using args = typename task_type::args;
-  using res = typename task_type::res;
+  using arg_types = typename task_type::args;
+  using res_type = typename task_type::res;
   using executor = Executor;
   using sending_type = typename task_type::res;
 
@@ -314,8 +314,8 @@ public:
                   std::optional<tracing_span_ref> span,
                   Task& task)
       : node_core<Executor>(id, builder, span)
-      , receiver<Executor, args>(id, builder, span)
-      , sender<Executor, res>(id, builder, span)
+      , receiver<Executor, arg_types>(id, builder, span)
+      , sender<Executor, res_type>(id, builder, span)
       , m_task(std::move(task))
   {
   }

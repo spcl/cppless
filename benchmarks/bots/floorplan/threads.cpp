@@ -80,7 +80,7 @@ auto add_cell_threads(std::vector<std::thread>& threads,
 
                 return result;
               });
-          futures.push_back(task.future());
+          futures.push_back(task.get_future());
           threads.emplace_back(std::move(task));
         } else {
           add_cell_threads(threads,

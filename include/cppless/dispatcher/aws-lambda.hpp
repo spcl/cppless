@@ -126,11 +126,15 @@ auto task_function_name(const T& task) -> std::string
 template<class Archive>
 class base_aws_lambda_dispatcher;
 
+template<class Archive = json_binary_archive>
+class aws_lambda_nghttp2_dispatcher;
+
 template<class Archive>
 class aws_lambda_nghttp2_dispatcher_instance
 {
 public:
   using id_type = int;
+  using dispatcher_type = aws_lambda_nghttp2_dispatcher<Archive>;
 
   static auto create_sessions(boost::asio::io_service& io_service,
                               const cppless::aws::lambda::client& lambda_client,
@@ -213,10 +217,10 @@ public:
       -> aws_lambda_nghttp2_dispatcher_instance& = delete;
 
   template<class TaskType>
-  auto dispatch(TaskType& t,
-                cppless::shared_future<typename TaskType::res> result_future,
-                typename TaskType::args args,
-                std::optional<tracing_span_ref> span = std::nullopt) -> int
+  auto dispatch_impl(TaskType& t,
+                     typename TaskType::res& result_target,
+                     typename TaskType::args args,
+                     std::optional<tracing_span_ref> span = std::nullopt) -> int
   {
     std::string payload;
 
@@ -245,16 +249,12 @@ public:
       req->submit(session, m_lambda_client, m_key, span);
     };
 
-    auto cb = [this, id, result_future, span](
+    auto cb = [this, id, &result_target, span](
                   const cppless::aws::lambda::invocation_response& res) mutable
     {
       scoped_tracing_span deserialization_span(span, "deserialization");
-      cppless::shared_future<typename TaskType::res> copy(result_future);
 
-      typename TaskType::res result;
-      Archive::deserialize(res.body, result);
-
-      copy.set_value(result);
+      Archive::deserialize(res.body, result_target);
 
       m_finished.insert(id);
       m_completed++;
@@ -310,11 +310,15 @@ private:
   base_aws_lambda_dispatcher<Archive>& m_dispatcher;
 };
 
+template<class Archive = json_binary_archive>
+class aws_lambda_beast_dispatcher;
+
 template<class Archive>
 class aws_lambda_beast_dispatcher_instance
 {
 public:
   using id_type = int;
+  using dispatcher_type = aws_lambda_beast_dispatcher<Archive>;
 
   explicit aws_lambda_beast_dispatcher_instance(
       base_aws_lambda_dispatcher<Archive>& dispatcher)
@@ -359,11 +363,11 @@ public:
   auto operator=(aws_lambda_beast_dispatcher_instance&& other) noexcept
       -> aws_lambda_beast_dispatcher_instance& = delete;
 
-  template<class TaskType>
-  auto dispatch(TaskType& t,
-                cppless::shared_future<typename TaskType::res> result_future,
-                typename TaskType::args args,
-                std::optional<tracing_span_ref> span = std::nullopt) -> int
+  template<class Task>
+  auto dispatch_impl(Task& t,
+                     typename Task::res& result_target,
+                     typename Task::args args,
+                     std::optional<tracing_span_ref> span = std::nullopt) -> int
   {
     int id = m_next_id++;
 
@@ -383,16 +387,12 @@ public:
     m_requests.push_back(req);
 
     req->on_result(
-        [id, result_future, this, span](
+        [id, &result_target, this, span](
             const cppless::aws::lambda::invocation_response& res) mutable
         {
           scoped_tracing_span deserialization_span(span, "deserialization");
-          cppless::shared_future<typename TaskType::res> copy(result_future);
 
-          typename TaskType::res result;
-          Archive::deserialize(res.body, result);
-
-          copy.set_value(result);
+          Archive::deserialize(res.body, result_target);
 
           m_finished.insert(id);
         });
@@ -534,7 +534,7 @@ public:
   }
 };
 
-template<class Archive = json_binary_archive>
+template<class Archive>
 class aws_lambda_nghttp2_dispatcher : public base_aws_lambda_dispatcher<Archive>
 {
 public:
@@ -549,7 +549,7 @@ public:
       aws_lambda_env_dispatcher<aws_lambda_nghttp2_dispatcher<Archive>>;
 };
 
-template<class Archive = json_binary_archive>
+template<class Archive>
 class aws_lambda_beast_dispatcher : public base_aws_lambda_dispatcher<Archive>
 {
 public:

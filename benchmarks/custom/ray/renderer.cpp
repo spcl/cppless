@@ -173,8 +173,8 @@ void aws_lambda_renderer::start(scene sc,
     unsigned int height = target.height();
     int samples_per_pixel = sc.samples_per_pixel;
     int max_depth = sc.max_depth;
-    task::sendable t = [cam, width, height, samples_per_pixel, max_depth](
-                           tile t, bvh_node world)
+    auto t = [cam, width, height, samples_per_pixel, max_depth](tile t,
+                                                                bvh_node world)
     {
       std::mt19937 generator(42);
       std::uniform_real_distribution<double> distribution(0.0, 1.0);
@@ -194,21 +194,20 @@ void aws_lambda_renderer::start(scene sc,
     };
 
     auto tiles = quantize_image(target.width(), target.height(), 64, 64);
-    std::vector<cppless::shared_future<image>> futures;
-    futures.reserve(tiles.size());
+    std::vector<image> images(tiles.size());
 
-    for (auto tile : tiles) {
-      instance.dispatch(
-          t, futures.emplace_back(), std::make_tuple(tile, bvh_root));
+    for (int i = 0; i < tiles.size(); i++) {
+      cppless::dispatch(
+          instance, t, images[i], std::make_tuple(tiles[i], bvh_root));
     }
 
-    for (int i = 0; i < futures.size(); i++) {
+    for (int i = 0; i < images.size(); i++) {
       auto f = instance.wait_one();
       {
         std::scoped_lock lk(mut);
         tile t = tiles[f];
-        target.insert(t.x, t.y, futures[f].value());
-        progress = static_cast<double>(i) / futures.size();
+        target.insert(t.x, t.y, images[f]);
+        progress = static_cast<double>(i) / images.size();
         cv.notify_one();
       }
     }

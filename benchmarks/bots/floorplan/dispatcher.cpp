@@ -13,15 +13,14 @@
 #include "./common.hpp"
 
 template<class Dispatcher>
-auto add_cell_dispatcher(
-    typename Dispatcher::instance& instance,
-    std::vector<cppless::shared_future<result_data>>& futures,
-    int cutoff,
-    result_data& result,
-    int id,
-    coord prev_footprint,
-    board_array& prev_board,
-    std::span<cell> cells) -> void
+auto add_cell_dispatcher(typename Dispatcher::instance& instance,
+                         std::vector<std::unique_ptr<result_data>>& futures,
+                         int cutoff,
+                         result_data& result,
+                         int id,
+                         coord prev_footprint,
+                         board_array& prev_board,
+                         std::span<cell> cells) -> void
 {
   int nn = 0;
   int area = 0;
@@ -68,25 +67,24 @@ auto add_cell_dispatcher(
       } else if (area < result.min_area) {
         if (cutoff == 0) {
           std::vector<cell> cell_vector {cells.begin(), cells.end()};
-          typename Dispatcher::template task<>::sendable task =(
-              [min_area = result.min_area,
-               cell_vector,
-               footprint,
-               parent_board = board,
-               id]() mutable
-              {
-                board_array board = parent_board;
-                std::span<cell> cells {cell_vector};
+          auto task = [min_area = result.min_area,
+                       cell_vector,
+                       footprint,
+                       parent_board = board,
+                       id]() mutable
+          {
+            board_array board = parent_board;
+            std::span<cell> cells {cell_vector};
 
-                result_data result {};
-                result.min_area = min_area;
+            result_data result {};
+            result.min_area = min_area;
 
-                add_cell(result, cells[id].next, footprint, board, cells);
+            add_cell(result, cells[id].next, footprint, board, cells);
 
-                return result;
-              });
-          auto future = futures.emplace_back();
-          instance.dispatch(task, future, {});
+            return result;
+          };
+          auto& future = *futures.emplace_back();
+          cppless::dispatch(instance, task, future, {});
 
         } else {
           add_cell_dispatcher<Dispatcher>(instance,
@@ -100,6 +98,7 @@ auto add_cell_dispatcher(
         }
         /* if area is greater than or equal to best area, prune search */
       } else {
+        // No pruning here
       }
     }
   }
@@ -114,7 +113,7 @@ auto floorplan(dispatcher_args args) -> std::tuple<int, result_data>
   dispatcher aws {lambda_client, key};
   dispatcher::instance instance = aws.create_instance();
 
-  std::vector<cppless::shared_future<result_data>> futures;
+  std::vector<std::unique_ptr<result_data>> futures;
 
   coord footprint;
   /* footprint of initial board is zero */
@@ -137,11 +136,9 @@ auto floorplan(dispatcher_args args) -> std::tuple<int, result_data>
                                   footprint,
                                   board,
                                   std::span<cell> {args.fp.cells});
-  for ([[maybe_unused]] auto& f : futures) {
-    instance.wait_one();
-  }
+  cppless::wait(instance, futures.size());
   for (auto& future : futures) {
-    result = combine(result, future.value());
+    result = combine(result, *future);
   }
 
   return {futures.size(), result};

@@ -82,12 +82,6 @@ public:
   using input_archive = InputArchive;
   using output_archive = OutputArchive;
 
-  template<class... Modifiers>
-  using task =
-      typename cppless::task<local_dispatcher<input_archive, output_archive>>;
-  template<class T>
-  using sendable_task = typename task<>::template sendable<T>;
-
   template<class Config>
   struct meta_serializer
   {
@@ -164,6 +158,7 @@ public:
   {
   public:
     using id_type = int;
+    using dispatcher_type = local_dispatcher;
 
     explicit instance(
         local_dispatcher<input_archive, output_archive>& dispatcher)
@@ -217,10 +212,11 @@ public:
      * @return int - The id of the invocation
      */
     template<class TaskType>
-    auto dispatch(TaskType& t,
-                  cppless::shared_future<typename TaskType::res> result_future,
-                  typename TaskType::args args,
-                  std::optional<tracing_span_ref> span = std::nullopt) -> int
+    auto dispatch_impl(TaskType& t,
+                       typename TaskType::res& result_target,
+                       typename TaskType::args args,
+                       std::optional<tracing_span_ref> span = std::nullopt)
+        -> int
     {
       // Get the function name
       auto function_name = t.identifier();
@@ -228,11 +224,10 @@ public:
       task_data data {t, args};
       std::string location = m_dispatcher.m_function_map[function_name];
       int id = m_next_id++;
-      auto cb = [this, result_future, id](typename TaskType::res result)
+      auto cb = [this, &result_target, id](const typename TaskType::res& result)
       {
-        cppless::shared_future<typename TaskType::res> copy(result_future);
         std::lock_guard<std::mutex> lock(m_mutex);
-        copy.set_value(result);
+        result_target = result;
         m_finished.push_back(id);
         m_cv.notify_one();
       };

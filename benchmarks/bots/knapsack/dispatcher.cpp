@@ -2,6 +2,7 @@
 
 #include <algorithm>
 #include <limits>
+#include <memory>
 #include <span>
 #include <tuple>
 
@@ -14,35 +15,30 @@
 #include "./common.hpp"
 
 template<class Dispatcher>
-inline auto knapsack_dispatcher(
-    unsigned int split,
-    typename Dispatcher::instance& instance,
-    std::span<knapsack_item> items,
-    std::vector<cppless::shared_future<int>>& futures,
-    int c,
-    int v) -> void
+inline auto knapsack_dispatcher(unsigned int split,
+                                typename Dispatcher::instance& instance,
+                                std::span<knapsack_item> items,
+                                std::vector<std::unique_ptr<int>>& futures,
+                                int c,
+                                int v) -> void
 {
   if (items.size() == split) {
     auto child_items = items.subspan(1);
     std::vector<knapsack_item> items_vector(child_items.begin(),
                                             child_items.end());
-    typename Dispatcher::template task<>::sendable task =
-        [items_vector](int c, int v) mutable
+    auto task = [items_vector](int c, int v) mutable
     {
       std::span<knapsack_item> items(items_vector);
       int best_so_far = std::numeric_limits<int>::min();
       return knapsack_serial(best_so_far, items, c, v);
     };
 
-    auto without_future = futures.emplace_back();
-    instance.dispatch(
-        task, without_future, std::make_tuple(c, v), std::nullopt);
+    auto without_future = *futures.emplace_back();
+    cppless::dispatch(instance, task, without_future, {c, v});
 
-    auto with_future = futures.emplace_back();
-    instance.dispatch(task,
-                      with_future,
-                      std::make_tuple(c - items[0].weight, v + items[0].value),
-                      std::nullopt);
+    auto with_future = *futures.emplace_back();
+    cppless::dispatch(
+        instance, task, with_future, {c - items[0].weight, v + items[0].value});
   } else {
     knapsack_dispatcher<Dispatcher>(
         split, instance, items.subspan(1), futures, c, v);
@@ -65,7 +61,7 @@ auto knapsack(dispatcher_args args) -> int
   dispatcher aws {lambda_client, key};
   dispatcher::instance instance = aws.create_instance();
 
-  std::vector<cppless::shared_future<int>> futures;
+  std::vector<std::unique_ptr<int>> futures;
 
   knapsack_dispatcher<dispatcher>(args.split,
                                   instance,
@@ -79,7 +75,7 @@ auto knapsack(dispatcher_args args) -> int
 
   int res = std::numeric_limits<int>::min();
   for (auto& f : futures) {
-    res = std::max(f.value(), res);
+    res = std::max(*f, res);
   }
   return res;
 }

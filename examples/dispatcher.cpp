@@ -12,7 +12,6 @@
 using dispatcher =
     cppless::dispatcher::local_dispatcher<cereal::BinaryInputArchive,
                                           cereal::BinaryOutputArchive>;
-using task = cppless::task<dispatcher>;
 
 __attribute((weak)) auto main(int argc, char* argv[]) -> int
 {
@@ -24,19 +23,18 @@ __attribute((weak)) auto main(int argc, char* argv[]) -> int
 
     int a = -1;
 
-    task::sendable t0 = [=]() { return a + 3; };
-    task::sendable t1 = [=]() { return 1 - a; };
-    cppless::shared_future<int> t0_result;
-    cppless::shared_future<int> t1_result;
-    instance.dispatch(t0, t0_result, std::make_tuple());
-    instance.dispatch(t1, t1_result, std::make_tuple());
+    auto t0 = [=]() { return a + 3; };
+    auto t1 = [=]() { return 1 - a; };
+    int t0_result, t1_result;
+    cppless::dispatch(instance, t0, t0_result, {});
+    cppless::dispatch(instance, t1, t1_result, {});
 
     int x = instance.wait_one();
     std::cout << "x = " << x << std::endl;
     int y = instance.wait_one();
     std::cout << "y = " << y << std::endl;
 
-    std::cout << t0_result.value() << std::endl;
-    std::cout << t1_result.value() << std::endl;
+    std::cout << t0_result << std::endl;
+    std::cout << t1_result << std::endl;
   }
 }

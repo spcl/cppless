@@ -22,4 +22,26 @@ See the [BUILDING](BUILDING.md) document.
 
 See the [CONTRIBUTING](CONTRIBUTING.md) document.
 
+# Benchmarks
+
+Implementations
+
+- fft - (partially implemented, probably doesn't make sense)
+- sort - (partially implemented, probably doesn't make sense)
+
+- fib - (slow)
+- floorplan - implemented
+- knapsack - implemented
+
+- nqueens - implemented
+- ray-casting - implemented
+
+Ideas
+- Mandelbrot?
+- k-means
+- jacobi iteration (s3)
+- nbody (complex?)
+
+- hole punching
+
 # Licensing
