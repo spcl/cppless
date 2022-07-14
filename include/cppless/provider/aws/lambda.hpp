@@ -62,7 +62,8 @@ public:
   auto set_tags(tracing_span_ref span) -> void
   {
     span.set_tag("date", m_date);
-    span.set_tag("function_name", m_qualifier);
+    span.set_tag("function_name", m_function_name);
+    span.set_tag("function_qualifier", m_qualifier);
     span.set_tag("payload_size", std::to_string(m_payload.size()));
   }
   [[nodiscard]] auto date() const -> std::string
@@ -155,11 +156,11 @@ public:
         {
           m_result.insert(m_result.end(), &data[0], &data[len]);  // NOLINT
           if (len == 0) {
-            auto request_id_it = res.header().find("x-amzn-RequestId");
+            auto request_id_it = res.header().find("x-amzn-requestid");
             std::string request_id = request_id_it != res.header().end()
                 ? request_id_it->second.value
                 : "";
-            auto date_it = res.header().find("Date");
+            auto date_it = res.header().find("date");
             std::string date =
                 date_it != res.header().end() ? date_it->second.value : "";
             if (span) {
