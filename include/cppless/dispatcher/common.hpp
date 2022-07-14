@@ -309,7 +309,7 @@ template<class Task, class DispatcherInstance>
 inline auto dispatch(DispatcherInstance& instance,
                      Task& task,
                      typename Task::res& result_target,
-                     typename Task::args args,
+                     typename Task::args args = {},
                      std::optional<tracing_span_ref> span = std::nullopt)
 {
   return instance.dispatch_impl(task, result_target, args, span);
@@ -323,7 +323,7 @@ template<class Config,
 inline auto dispatch(DispatcherInstance& instance,
                      Fn& fn,
                      typename detail::function_res<FnType>::type& result_target,
-                     typename detail::function_args<FnType>::type args,
+                     typename detail::function_args<FnType>::type args = {},
                      std::optional<tracing_span_ref> span = std::nullopt)
 {
   auto task = lambda_task_factory<typename DispatcherInstance::dispatcher_type,
@@ -338,7 +338,7 @@ template<class Fn,
 inline auto dispatch(DispatcherInstance& instance,
                      Fn& fn,
                      typename detail::function_res<FnType>::type& result_target,
-                     typename detail::function_args<FnType>::type args,
+                     typename detail::function_args<FnType>::type args = {},
                      std::optional<tracing_span_ref> span = std::nullopt)
 {
   return dispatch<typename DispatcherInstance::dispatcher_type::default_config>(
