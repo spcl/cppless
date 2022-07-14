@@ -15,9 +15,8 @@
 
 #include "./common.hpp"
 
-using dispatcher =
-    cppless::dispatcher::aws_lambda_nghttp2_dispatcher<>::from_env;
-namespace lambda = cppless::dispatcher::aws;
+using dispatcher = cppless::aws_lambda_nghttp2_dispatcher<>::from_env;
+namespace lambda = cppless::aws;
 constexpr unsigned int memory_limit = 2048;
 constexpr unsigned int ephemeral_storage = 64;
 using cpu_intensive =

@@ -9,9 +9,8 @@
 
 #include "cppless/dispatcher/common.hpp"
 
-using dispatcher =
-    cppless::dispatcher::local_dispatcher<cereal::BinaryInputArchive,
-                                          cereal::BinaryOutputArchive>;
+using dispatcher = cppless::local_dispatcher<cereal::BinaryInputArchive,
+                                             cereal::BinaryOutputArchive>;
 
 __attribute((weak)) auto main(int argc, char* argv[]) -> int
 {

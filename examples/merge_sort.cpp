@@ -82,9 +82,8 @@ auto merge_sort(
   return res;
 }
 
-using dispatcher =
-    cppless::dispatchers::local_dispatcher<cereal::BinaryInputArchive,
-                                           cereal::BinaryOutputArchive>;
+using dispatcher = cpplesss::local_dispatcher<cereal::BinaryInputArchive,
+                                              cereal::BinaryOutputArchive>;
 
 using namespace std;
 int main(int argc, char* argv[])

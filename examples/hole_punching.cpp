@@ -90,7 +90,7 @@ auto exchange_number(std::string host_name, std::string connection_key) -> int
   return sum;
 }
 
-using dispatcher = cppless::dispatcher::aws_lambda_beast_dispatcher<>::from_env;
+using dispatcher = cppless::aws_lambda_beast_dispatcher<>::from_env;
 using task = cppless::task<dispatcher>;
 
 auto main() -> int

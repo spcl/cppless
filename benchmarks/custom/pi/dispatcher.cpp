@@ -1,15 +1,13 @@
+#include <fstream>
 #include <random>
 #include <vector>
 
 #include <argparse/argparse.hpp>
 #include <cppless/dispatcher/aws-lambda.hpp>
 
-using dispatcher =
-    cppless::dispatcher::aws_lambda_nghttp2_dispatcher<>::from_env;
-namespace lambda = cppless::dispatcher::aws;
-using config = lambda::config<lambda::with_memory<42>>;
+using dispatcher = cppless::aws_lambda_nghttp2_dispatcher<>::from_env;
 
-auto is_inside(long iterations) -> double
+auto pi_estimate(long iterations) -> double
 {
   std::random_device r;
 
@@ -33,8 +31,13 @@ auto main(int argc, char* argv[]) -> int
   argparse::ArgumentParser program("pi_bench_dispatcher");
 
   program.add_argument("n").help("number of iterations").scan<'i', long>();
-
-  program.add_argument("np").help("number of processes").scan<'i', int>();
+  program.add_argument("-p")
+      .help("number of processes")
+      .default_value(1)
+      .scan<'i', int>();
+  program.add_argument("-t")
+      .default_value(std::string(""))
+      .help("location to write trace file to");
 
   try {
     program.parse_args(argc, argv);
@@ -45,19 +48,30 @@ auto main(int argc, char* argv[]) -> int
   }
 
   long n = program.get<long>("n");
-  int np = program.get<int>("np");
+  int np = program.get<int>("-p");
+  std::string trace_location = program.get("-t");
 
   dispatcher aws;
   auto instance = aws.create_instance();
+  cppless::tracing_span_container spans;
+  auto root = spans.create_root("root");
 
   std::vector<double> results(np);
-
   for (int i = 0; i < np; i++) {
-    auto fn = [=](long iterations) { return is_inside(iterations); };
-    cppless::dispatch<config>(instance, fn, results[i], {n / np});
+    auto fn = [=](long iterations) { return pi_estimate(iterations); };
+    cppless::dispatch(instance,
+                      fn,
+                      results[i],
+                      {n / np},
+                      root.create_child("lambda_invocation"));
   }
   cppless::wait(instance, np);
 
-  double pi = std::accumulate(results.begin(), results.end(), 0) / n;
+  double pi = std::reduce(results.begin(), results.end(), 0.0) / np;
   std::cout << pi << std::endl;
+  if (!trace_location.empty()) {
+    std::ofstream trace_file(trace_location);
+    nlohmann::json j = spans;
+    trace_file << j.dump(2);
+  }
 }

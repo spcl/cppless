@@ -26,7 +26,7 @@
 #  define TARGET_NAME "cppless"  // NOLINT
 #endif
 
-namespace cppless::dispatcher
+namespace cppless
 {
 
 /**
@@ -564,4 +564,6 @@ public:
       aws_lambda_env_dispatcher<aws_lambda_beast_dispatcher<Archive>>;
 };
 
-}  // namespace cppless::dispatcher
+using aws_dispatcher = aws_lambda_nghttp2_dispatcher<>::from_env;
+
+}  // namespace cppless

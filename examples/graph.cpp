@@ -11,9 +11,8 @@
 #include <cppless/utils/tracing.hpp>
 #include <nlohmann/json.hpp>
 
-using dispatcher =
-    cppless::dispatcher::local_dispatcher<cereal::BinaryInputArchive,
-                                          cereal::BinaryOutputArchive>;
+using dispatcher = cppless::local_dispatcher<cereal::BinaryInputArchive,
+                                             cereal::BinaryOutputArchive>;
 using executor = cppless::executor::host_controller_executor<dispatcher>;
 const int iterations = 100;
 __attribute((weak)) auto main(int argc, char* argv[]) -> int

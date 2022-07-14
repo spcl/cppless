@@ -10,7 +10,7 @@
 #include <cppless/graph/host_controller_executor.hpp>
 #include <nlohmann/json.hpp>
 
-using dispatcher = cppless::dispatcher::aws_lambda_dispatcher;
+using dispatcher = cppless::aws_lambda_dispatcher;
 using executor = cppless::executor::host_controller_executor<dispatcher>;
 
 __attribute((weak)) auto main(int /*argc*/, char* /*argv*/[]) -> int

@@ -7,7 +7,7 @@
 #include <cppless/dispatcher/aws-lambda.hpp>
 #include <cppless/dispatcher/common.hpp>
 
-using dispatcher = cppless::dispatcher::aws_lambda_beast_dispatcher<>::from_env;
+using dispatcher = cppless::aws_lambda_beast_dispatcher<>::from_env;
 using task = cppless::task<dispatcher>;
 
 constexpr auto cutoff = 1024;

@@ -104,7 +104,7 @@ auto add_cell_dispatcher(typename Dispatcher::instance& instance,
   }
 }
 
-using dispatcher = cppless::dispatcher::aws_lambda_nghttp2_dispatcher<>;
+using dispatcher = cppless::aws_lambda_nghttp2_dispatcher<>;
 
 auto floorplan(dispatcher_args args) -> std::tuple<int, result_data>
 {

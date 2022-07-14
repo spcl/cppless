@@ -52,7 +52,7 @@ inline auto knapsack_dispatcher(unsigned int split,
   }
 }
 
-using dispatcher = cppless::dispatcher::aws_lambda_nghttp2_dispatcher<>;
+using dispatcher = cppless::aws_lambda_nghttp2_dispatcher<>;
 
 auto knapsack(dispatcher_args args) -> int
 {

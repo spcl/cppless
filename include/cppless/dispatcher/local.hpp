@@ -22,7 +22,7 @@
 #include <cppless/utils/uninitialized.hpp>
 #include <nlohmann/json.hpp>
 
-namespace cppless::dispatcher
+namespace cppless
 {
 using json = nlohmann::json;
 namespace fs = std::filesystem;
@@ -307,4 +307,4 @@ private:
   std::map<std::string, std::string> m_function_map;
 };
 
-}  // namespace cppless::dispatcher
+}  // namespace cppless

@@ -18,7 +18,7 @@
 
 #include "cppless/detail/deduction.hpp"
 
-using dispatcher = cppless::dispatcher::aws_lambda_beast_dispatcher<>::from_env;
+using dispatcher = cppless::aws_lambda_beast_dispatcher<>::from_env;
 
 auto do_task(int i, cppless::tracing_span_ref span) -> int
 {
