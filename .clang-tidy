@@ -10,6 +10,7 @@ Checks: "*,\
   -llvm-include-order,\
   -llvmlibc-*,\
   -misc-non-private-member-variables-in-classes,\
+  -google-runtime-int,\
   -modernize-avoid-bind"
 WarningsAsErrors: ""
 CheckOptions:
