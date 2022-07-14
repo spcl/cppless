@@ -1,17 +1,15 @@
 #!/usr/bin/env python3
 import argparse
 import base64
-from datetime import datetime
 import hashlib
 import io
 import json
-import os
 import time
 import zipfile
+from datetime import datetime
 from pathlib import Path, PurePosixPath
 from threading import Thread
 from typing import List
-from encoding import decode_value
 
 import boto3
 import botocore.exceptions
@@ -19,6 +17,7 @@ import docker
 from docker.models.containers import Container
 from mypy_boto3_lambda import LambdaClient
 
+from encoding import decode_value
 
 parser = argparse.ArgumentParser(
     description="Packages all alternative entry points of a binary compiled with the cppless alt-entry option"
