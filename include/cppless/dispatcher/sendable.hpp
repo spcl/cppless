@@ -47,14 +47,20 @@ public:
       serialize_helper<Archive, Lambda, 0, capture_count>(ar, m_lambda);
     }
   }
+  auto operator()(Args... args) -> Res
+  {
+    return m_lambda(args...);
+  }
+
+private:
   Lambda m_lambda;
 };
 
 template<class Dispatcher>
 class task_base
 {
-  using input_archive = typename Dispatcher::input_archive;
-  using output_archive = typename Dispatcher::output_archive;
+  using input_archive = typename Dispatcher::request_input_archive;
+  using output_archive = typename Dispatcher::request_output_archive;
 
 public:
   virtual auto serialize(output_archive& ar) -> void = 0;
@@ -68,8 +74,8 @@ class task;
 template<class Dispatcher, class Res, class... Args>
 class task<Dispatcher, Res(Args...)>
 {
-  using input_archive = typename Dispatcher::input_archive;
-  using output_archive = typename Dispatcher::output_archive;
+  using input_archive = typename Dispatcher::request_input_archive;
+  using output_archive = typename Dispatcher::request_output_archive;
 
 public:
   using args = std::tuple<Args...>;
@@ -101,8 +107,8 @@ template<class Dispatcher, class Config, class Lambda, class Res, class... Args>
 class lambda_task<Dispatcher, Config, Lambda, Res(Args...)>
     : public task_base<Dispatcher>
 {
-  using input_archive = typename Dispatcher::input_archive;
-  using output_archive = typename Dispatcher::output_archive;
+  using input_archive = typename Dispatcher::request_input_archive;
+  using output_archive = typename Dispatcher::request_output_archive;
 
 public:
   explicit lambda_task(const Lambda& l)
@@ -130,7 +136,10 @@ public:
           function_identifier<Lambda, Args...>())))) static auto
   main(int argc, char* argv[]) -> int
   {
-    return Dispatcher::template main<Lambda, Res, Args...>(argc, argv);
+    return Dispatcher::template main<Lambda,
+                                     receivable_lambda<Lambda, Res, Args...>,
+                                     Res,
+                                     Args...>(argc, argv);
   }
 
 private:

@@ -123,18 +123,20 @@ auto task_function_name(const T& task) -> std::string
   return function_name;
 }
 
-template<class Archive>
+template<class RequestArchive, class ResponseArchive>
 class base_aws_lambda_dispatcher;
 
-template<class Archive = json_binary_archive>
+template<class RequestArchive = json_binary_archive,
+         class ResponseArchive = binary_archive>
 class aws_lambda_nghttp2_dispatcher;
 
-template<class Archive>
+template<class RequestArchive, class ResponseArchive>
 class aws_lambda_nghttp2_dispatcher_instance
 {
 public:
   using id_type = int;
-  using dispatcher_type = aws_lambda_nghttp2_dispatcher<Archive>;
+  using dispatcher_type =
+      aws_lambda_nghttp2_dispatcher<RequestArchive, ResponseArchive>;
 
   static auto create_sessions(boost::asio::io_service& io_service,
                               const cppless::aws::lambda::client& lambda_client,
@@ -158,7 +160,7 @@ public:
 
   constexpr static int num_conns = 16;
   explicit aws_lambda_nghttp2_dispatcher_instance(
-      base_aws_lambda_dispatcher<Archive>& dispatcher)
+      base_aws_lambda_dispatcher<RequestArchive, ResponseArchive>& dispatcher)
       : m_lambda_client(dispatcher.lambda_client())
       , m_key(dispatcher.key())
       , m_sessions(create_sessions(m_io_service, m_lambda_client, num_conns))
@@ -228,7 +230,7 @@ public:
       scoped_tracing_span serialization_span(span, "serialization");
 
       task_data data {t, args};
-      payload = Archive::serialize(data);
+      payload = RequestArchive::serialize(data);
     }
 
     int id = m_started++;
@@ -254,7 +256,7 @@ public:
     {
       scoped_tracing_span deserialization_span(span, "deserialization");
 
-      Archive::deserialize(res.body, result_target);
+      ResponseArchive::deserialize(res.body, result_target);
 
       m_finished.insert(id);
       m_completed++;
@@ -307,21 +309,23 @@ private:
   int m_started = 0;
   int m_completed = 0;
 
-  base_aws_lambda_dispatcher<Archive>& m_dispatcher;
+  base_aws_lambda_dispatcher<RequestArchive, ResponseArchive>& m_dispatcher;
 };
 
-template<class Archive = json_binary_archive>
+template<class RequestArchive = json_binary_archive,
+         class ResponseArchive = binary_archive>
 class aws_lambda_beast_dispatcher;
 
-template<class Archive>
+template<class RequestArchive, class ResponseArchive>
 class aws_lambda_beast_dispatcher_instance
 {
 public:
   using id_type = int;
-  using dispatcher_type = aws_lambda_beast_dispatcher<Archive>;
+  using dispatcher_type =
+      aws_lambda_beast_dispatcher<RequestArchive, ResponseArchive>;
 
   explicit aws_lambda_beast_dispatcher_instance(
-      base_aws_lambda_dispatcher<Archive>& dispatcher)
+      base_aws_lambda_dispatcher<RequestArchive, ResponseArchive>& dispatcher)
       : m_tls(boost::asio::ssl::context::tlsv12_client)
       , m_lambda_client(dispatcher.lambda_client())
       , m_resolver(m_ioc)
@@ -377,7 +381,7 @@ public:
       scoped_tracing_span serialization_span(span, "serialization");
 
       task_data data {t, args};
-      payload = Archive::serialize(data);
+      payload = RequestArchive::serialize(data);
     }
 
     std::shared_ptr<cppless::aws::lambda::beast_invocation_request> req =
@@ -392,7 +396,7 @@ public:
         {
           scoped_tracing_span deserialization_span(span, "deserialization");
 
-          Archive::deserialize(res.body, result_target);
+          ResponseArchive::deserialize(res.body, result_target);
 
           m_finished.insert(id);
         });
@@ -424,16 +428,18 @@ private:
 
   int m_next_id = 0;
 
-  base_aws_lambda_dispatcher<Archive>& m_dispatcher;
+  base_aws_lambda_dispatcher<RequestArchive, ResponseArchive>& m_dispatcher;
 };
 
-template<class Archive>
+template<class RequestArchive, class ResponseArchive>
 class base_aws_lambda_dispatcher
 {
 public:
   using default_config = aws::config<>;
-  using input_archive = typename Archive::input_archive;
-  using output_archive = typename Archive::output_archive;
+  using request_input_archive = typename RequestArchive::input_archive;
+  using request_output_archive = typename RequestArchive::output_archive;
+  using response_input_archive = typename ResponseArchive::input_archive;
+  using response_output_archive = typename ResponseArchive::output_archive;
 
   template<class... Modifiers>
   using task =
@@ -469,14 +475,13 @@ public:
     }
   };
 
-  template<class Lambda, class Res, class... Args>
+  template<class Lambda, class Receivable, class Res, class... Args>
   static auto main(int /*argc*/, char* /*argv*/[]) -> int
   {
     using invocation_response = ::aws::lambda_runtime::invocation_response;
     using invocation_request = ::aws::lambda_runtime::invocation_request;
 
-    using recv = cppless::receivable_lambda<Lambda, Res, Args...>;
-    using uninitialized_recv = cppless::uninitialized_data<recv>;
+    using uninitialized_recv = cppless::uninitialized_data<Receivable>;
     ::aws::lambda_runtime::run_handler(
         [](invocation_request const& request)
         {
@@ -485,11 +490,11 @@ public:
           // task_data takes both of its constructor arguments by reference,
           // thus deserializing into `t_data` will populate the context into
           // `m_self` and the arguments into `s_args`.
-          task_data<recv, Args...> t_data {u.m_self, s_args};
-          Archive::deserialize(request.payload, t_data);
-          Res res = std::apply(u.m_self.m_lambda, s_args);
+          task_data<Receivable, Args...> t_data {u.m_self, s_args};
+          RequestArchive::deserialize(request.payload, t_data);
+          Res res = std::apply(u.m_self, s_args);
 
-          return invocation_response::success(Archive::serialize(res),
+          return invocation_response::success(ResponseArchive::serialize(res),
                                               "application/json");
         });
     return 0;
@@ -534,34 +539,44 @@ public:
   }
 };
 
-template<class Archive>
-class aws_lambda_nghttp2_dispatcher : public base_aws_lambda_dispatcher<Archive>
+template<class RequestArchive, class ResponseArchive>
+class aws_lambda_nghttp2_dispatcher
+    : public base_aws_lambda_dispatcher<RequestArchive, ResponseArchive>
 {
 public:
-  using instance = aws_lambda_nghttp2_dispatcher_instance<Archive>;
-  using base_aws_lambda_dispatcher<Archive>::base_aws_lambda_dispatcher;
-  auto create_instance() -> aws_lambda_nghttp2_dispatcher_instance<Archive>
+  using instance =
+      aws_lambda_nghttp2_dispatcher_instance<RequestArchive, ResponseArchive>;
+  using base_aws_lambda_dispatcher<RequestArchive,
+                                   ResponseArchive>::base_aws_lambda_dispatcher;
+  auto create_instance()
+      -> aws_lambda_nghttp2_dispatcher_instance<RequestArchive, ResponseArchive>
   {
-    return aws_lambda_nghttp2_dispatcher_instance<Archive> {*this};
+    return aws_lambda_nghttp2_dispatcher_instance<RequestArchive,
+                                                  ResponseArchive> {*this};
   }
 
-  using from_env =
-      aws_lambda_env_dispatcher<aws_lambda_nghttp2_dispatcher<Archive>>;
+  using from_env = aws_lambda_env_dispatcher<
+      aws_lambda_nghttp2_dispatcher<RequestArchive, ResponseArchive>>;
 };
 
-template<class Archive>
-class aws_lambda_beast_dispatcher : public base_aws_lambda_dispatcher<Archive>
+template<class RequestArchive, class ResponseArchive>
+class aws_lambda_beast_dispatcher
+    : public base_aws_lambda_dispatcher<RequestArchive, ResponseArchive>
 {
 public:
-  using instance = aws_lambda_nghttp2_dispatcher_instance<Archive>;
-  using base_aws_lambda_dispatcher<Archive>::base_aws_lambda_dispatcher;
-  auto create_instance() -> aws_lambda_beast_dispatcher_instance<Archive>
+  using instance =
+      aws_lambda_nghttp2_dispatcher_instance<RequestArchive, ResponseArchive>;
+  using base_aws_lambda_dispatcher<RequestArchive,
+                                   ResponseArchive>::base_aws_lambda_dispatcher;
+  auto create_instance()
+      -> aws_lambda_beast_dispatcher_instance<RequestArchive, ResponseArchive>
   {
-    return aws_lambda_beast_dispatcher_instance<Archive> {*this};
+    return aws_lambda_beast_dispatcher_instance<RequestArchive,
+                                                ResponseArchive> {*this};
   }
 
-  using from_env =
-      aws_lambda_env_dispatcher<aws_lambda_beast_dispatcher<Archive>>;
+  using from_env = aws_lambda_env_dispatcher<
+      aws_lambda_beast_dispatcher<RequestArchive, ResponseArchive>>;
 };
 
 using aws_dispatcher = aws_lambda_nghttp2_dispatcher<>::from_env;

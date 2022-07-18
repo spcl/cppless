@@ -79,8 +79,10 @@ class local_dispatcher
 {
 public:
   using default_config = void;
-  using input_archive = InputArchive;
-  using output_archive = OutputArchive;
+  using request_input_archive = InputArchive;
+  using request_output_archive = OutputArchive;
+  using response_input_archive = InputArchive;
+  using response_output_archive = OutputArchive;
 
   template<class Config>
   struct meta_serializer
@@ -131,21 +133,20 @@ public:
     }
   }
 
-  template<class Lambda, class Res, class... Args>
+  template<class Lambda, class Receivable, class Res, class... Args>
   static auto main(int /*argc*/, char* /*argv*/[]) -> int  // NOLINT
   {
-    using recv = receivable_lambda<Lambda, Res, Args...>;
-    using uninitialized_recv = cppless::uninitialized_data<recv>;
+    using uninitialized_recv = cppless::uninitialized_data<Receivable>;
     input_archive iar(std::cin);
     uninitialized_recv u;
     std::tuple<Args...> s_args;
     // task_data takes both of its constructor arguments by reference, thus
     // deserializing into `t_data` will populate the context into `m_self` and
     // the arguments into `s_args`.
-    task_data<recv, Args...> t_data {u.m_self, s_args};
+    task_data<Receivable, Args...> t_data {u.m_self, s_args};
     iar(t_data);
 
-    Res res = std::apply(u.m_self.m_lambda, s_args);
+    Res res = std::apply(u.m_self, s_args);
     {
       output_archive oar(std::cout);
       oar(res);

@@ -305,6 +305,35 @@ public:
   }
 };
 
+class binary_archive
+{
+public:
+  using input_archive = cereal::BinaryInputArchive;
+  using output_archive = cereal::BinaryOutputArchive;
+
+  template<class T>
+  static inline auto serialize(T t) -> std::string
+  {
+    // Binary stream
+    std::stringstream bs;
+    {
+      output_archive oar(bs);
+      oar(t);
+    }
+    return bs.str();
+  }
+
+  template<class T>
+  static inline auto deserialize(const std::string& s, T& t) -> void
+  {
+    std::stringstream os(s);
+    {
+      input_archive iar(os);
+      iar(t);
+    }
+  }
+};
+
 template<class Task, class DispatcherInstance>
 inline auto dispatch(DispatcherInstance& instance,
                      Task& task,
