@@ -6,7 +6,7 @@ Cppless is a single source programming model for high performance serverless. It
 
 Building application that use cppless requires using a custom fork of the clang compiler. The modified version of the llvm-project is included as a submodule in the repository, it can be built by following these steps:
 - fetch the submodule
-  - `git submodule update --depth` (this will fetch only the latest revision, but will sped up the download)
+  - `git submodule update --init --recursive` (this will fetch only the latest revision, but will sped up the download)
   - Shallow clones cannot be used for contributing, you'll need to unshallow the clone in order to be able to commit changes to the submodule.
 - run `mkdir build && cd build` in the root of the repository (`llvm-project` doesn't support in-tree builds)
 - run `cmake -DLLVM_ENABLE_PROJECTS="clang" -DCMAKE_BUILD_TYPE=Release -G "Unix Makefiles" ../llvm`
