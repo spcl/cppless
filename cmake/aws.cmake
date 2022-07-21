@@ -10,11 +10,23 @@ function(aws_lambda_package_target target)
     else()
         set (PACKAGER_NO_LIBC "--libc")
     endif()
+
+    if (${SYSROOT})
+        set (PACKAGER_SYROOT "--sysroot" ${SYSROOT})
+    else()
+        set (PACKAGER_SYROOT)
+    endif()
+
+    if (${DOCKER_IMAGE})
+        set (PACKAGER_IMAGE "--image" ${DOCKER_IMAGE})
+    else()
+        set (PACKAGER_IMAGE)
+    endif()
     add_custom_target("aws_lambda_package_${target}"
         COMMAND ${AWS_LAMBDA_PACKAGING_SCRIPT} ${PACKAGER_NO_LIBC}
-        "--sysroot" ${SYSROOT}
         "--project" ${CMAKE_BINARY_DIR}
-        "--image" ${DOCKER_IMAGE}
+        ${PACKAGER_SYROOT}
+        ${PACKAGER_IMAGE}
         "--target-name" ${target}
         "--strip"
         "--deploy"
@@ -63,7 +75,7 @@ function(aws_lambda_serverless_target NAME)
             CMAKE_ARGS
                 -DCPPLESS_SERVERLESS=ON
                 -DCMAKE_BUILD_TYPE=Release
-                -DCMAKE_TOOLCHAIN_FILE=${CMAKE_SOURCE_DIR}/cmake/toolchains/linux-musl/toolchain.cmake
+                -DCMAKE_TOOLCHAIN_FILE=${CMAKE_SOURCE_DIR}/cmake/toolchains/${CPPLESS_TOOLCHAIN}/toolchain.cmake
                 -DCMAKE_MAKE_PROGRAM=${CMAKE_MAKE_PROGRAM}
                 -DAWS_LAMBDA_FUNCTION_ROLE_ARN=${AWS_LAMBDA_FUNCTION_ROLE_ARN}
             INSTALL_COMMAND true

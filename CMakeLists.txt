@@ -65,7 +65,8 @@ conan_cmake_configure(REQUIRES cereal/1.3.1
                               boost:without_context=True
                               boost:without_coroutine=True
                               boost:without_fiber=True
-                              boost:without_stacktrace=True)
+                              boost:without_stacktrace=True
+                              openssl:no_async=True)
 
 # The find-package conan generator uses the variables which are not necessarily defined
 set(_out_libraries "")

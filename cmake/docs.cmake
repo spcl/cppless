@@ -4,7 +4,7 @@ include(FetchContent)
 FetchContent_Declare(
     mcss URL
     https://github.com/mosra/m.css/archive/a0d292ec311b97fefd21e93cdefb60f88d19ede6.zip
-    URL_MD5 9a20fb687f763ce7d54aa4d37e386230
+    URL_MD5 d41d8cd98f00b204e9800998ecf8427e
     SOURCE_DIR "${PROJECT_BINARY_DIR}/mcss"
     UPDATE_DISCONNECTED YES
 )

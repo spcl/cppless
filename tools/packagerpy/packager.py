@@ -1,15 +1,17 @@
-#!/usr/bin/env python3
+#!/usr/bin/env python3.8
 import argparse
 import base64
 import hashlib
 import io
 import json
+import re
+import subprocess
 import time
 import zipfile
 from datetime import datetime
 from pathlib import Path, PurePosixPath
 from threading import Thread
-from typing import List
+from typing import List, Set
 
 import boto3
 import botocore.exceptions
@@ -26,12 +28,7 @@ parser.add_argument(
     "input", metavar="input", type=str, help="The input file to process."
 )
 parser.add_argument(
-    "-s",
-    "--sysroot",
-    metavar="sysroot",
-    type=str,
-    help="The sysroot to use.",
-    required=True,
+    "-s", "--sysroot", type=str, help="The sysroot to use.", default="", required=False
 )
 parser.add_argument(
     "-p",
@@ -44,39 +41,26 @@ parser.add_argument(
 parser.add_argument(
     "-i",
     "--image",
-    metavar="image",
     type=str,
     help="The docker image to use.",
-    required=True,
+    default="",
+    required=False,
 )
 parser.add_argument(
-    "--libc",
-    metavar="libc",
-    type=bool,
-    help="Do not use libc.",
-    default=False,
-    action=argparse.BooleanOptionalAction,
+    "--libc", help="Do not use libc.", default=False, action="store_true"
 )
 parser.add_argument(
-    "--strip",
-    metavar="strip",
-    type=bool,
-    help="Strip the executable.",
-    default=False,
-    action=argparse.BooleanOptionalAction,
+    "--strip", help="Strip the executable.", default=False, action="store_true"
 )
 parser.add_argument(
     "--deploy",
-    metavar="deploy",
-    type=bool,
     help="Deploy the package to AWS Lambda.",
     default=False,
-    action=argparse.BooleanOptionalAction,
+    action="store_true",
 )
 parser.add_argument(
     "-r",
     "--function-role-arn",
-    metavar="function-role-arn",
     type=str,
     help="The role ARN to use for the Lambda functions.",
     required=False,
@@ -96,32 +80,149 @@ some_time = datetime.utcfromtimestamp(420000000)
 args = parser.parse_args()
 
 input_path = Path(args.input)
-sysroot_path = Path(args.sysroot)
+if args.sysroot:
+    sysroot_path = Path(args.sysroot)
+else:
+    sysroot_path = None
 project_path = Path(args.project).absolute()
-image = args.image
 libc = args.libc
 strip = args.strip
 deploy = args.deploy
 function_role_arn = args.function_role_arn
 target_name = args.target_name
 
-container_root = PurePosixPath("/usr/src/project/")
-aws_lambda: LambdaClient = boto3.client("lambda")
-docker_client = docker.from_env()
+session = boto3.session.Session()
+aws_lambda: LambdaClient = session.client("lambda")
+
+image = args.image
 
 
-class ContainerWrapper:
+def parse_ldd(ldd_output: str):
+    lib_paths = set()
+
+    ldd_lines = ldd_output.decode("utf-8").split("\n")
+    for line in ldd_lines:
+        stripped = line.strip()
+        parts = stripped.split(" ")
+        if len(parts) == 2:
+            if not parts[0].startswith("/"):
+                continue
+            lib_path = PurePosixPath(parts[0])
+            lib_paths.add(lib_path)
+        elif len(parts) == 4:
+            lib_path = PurePosixPath(parts[2])
+            lib_paths.add(lib_path)
+
+    return lib_paths
+
+
+class NativeEnvironment:
+    def __init__(self):
+        pass
+
+    def start(self):
+        pass
+
+    def stop(self):
+        pass
+
+    def strip(self, path):
+        print(path)
+        _ = subprocess.run(["strip", path])
+
+    def ldd(self, path):
+        ldd = subprocess.run(["ldd", path], capture_output=True)
+        ldd_output = ldd.stdout
+        paths = parse_ldd(ldd_output)
+        print(paths)
+        return paths
+
+    def get_libc_paths(self):
+        paths: Set[PurePosixPath] = set()
+        rpm = subprocess.run(
+            ["rpm", "--query", "--list", "glibc.x86_64"], capture_output=True
+        )
+        rpm_output = rpm.stdout
+        for file in rpm_output.decode("utf-8").split("\n"):
+            if not (re.match(r"^.+\.so(\.[0-9]+)?$", file)) or not Path(file).is_file():
+                continue
+            paths.add(PurePosixPath(file))
+        return paths
+
+
+class DockerEnvironment:
     container: Container
+    container_root = PurePosixPath("/usr/src/project/")
 
-    def __init__(self, container):
+    def __init__(self, image):
+        container = docker_client.containers.run(
+            image,
+            ["tail", "-f", "/dev/null"],
+            detach=True,
+            volumes={
+                str(project_path): {
+                    "bind": self.container_root.as_posix(),
+                    "mode": "rw",
+                }
+            },
+        )
         self.container = container
 
-    def __enter__(self):
+    def start(self):
         return self.container
 
-    def __exit__(self, exc_type, exc_value, tb):
+    def stop(self):
         self.container.stop(timeout=0)
         self.container.remove()
+
+    def strip(self, path):
+        _, _ = self.container.exec_run(
+            ["strip", self.local_path_to_container_path(path).as_posix()]
+        )
+
+    def ldd(self, path):
+        _, ldd_output = self.container.exec_run(
+            [
+                "ldd",
+                self.local_path_to_container_path(path).as_posix(),
+            ]
+        )
+
+        ldd_paths = parse_ldd(ldd_output)
+        return ldd_paths
+
+    def local_path_to_container_path(self, local_path: Path) -> PurePosixPath:
+        return PurePosixPath(self.container_root / local_path.relative_to(project_path))
+
+    def get_libc_paths(self):
+        paths: Set[PurePosixPath] = set()
+
+        _, apk_output = self.container.exec_run(["apk", "info", "--contents", "musl"])
+        apk_lines = apk_output.decode("utf-8").split("\n")[1:]
+        for line in apk_lines:
+            stripped = line.strip()
+            if not stripped:
+                continue
+            paths.add(PurePosixPath("/" + stripped))
+        return paths
+
+
+class EnvironmentWrapper:
+    def __init__(self, environment):
+        self.environment = environment
+
+    def __enter__(self):
+        return self.environment.start()
+
+    def __exit__(self, exc_type, exc_value, tb):
+        self.environment.stop()
+
+
+if image:
+    docker_client = docker.from_env()
+    environment = DockerEnvironment(docker_client, image)
+else:
+    environment = NativeEnvironment()
 
 
 boostrap_libc_script_template = """
@@ -164,15 +265,7 @@ def get_zinfo(zf: zipfile.ZipFile, name: str, external_attr: int) -> zipfile.Zip
     return zinfo
 
 
-def strip_binary(
-    executable_path: Path,
-    project_path: Path,
-    container: Container,
-    container_root: PurePosixPath,
-):
-    def local_path_to_container_path(local_path: Path) -> PurePosixPath:
-        return PurePosixPath(container_root / local_path.relative_to(project_path))
-
+def strip_binary(executable_path: Path, environment):
     stripped_executable_path = executable_path.with_name(
         executable_path.name + ".stripped"
     )
@@ -180,65 +273,33 @@ def strip_binary(
     with executable_path.open("rb") as f:
         with stripped_executable_path.open("wb") as g:
             g.write(f.read())
-    _, _ = container.exec_run(
-        ["strip", local_path_to_container_path(stripped_executable_path).as_posix()]
-    )
+    environment.strip(stripped_executable_path)
     return stripped_executable_path
-
-
-def get_musl_paths(container: Container):
-    paths: set[PurePosixPath] = set()
-
-    _, apk_output = container.exec_run(["apk", "info", "--contents", "musl"])
-    apk_lines = apk_output.decode("utf-8").split("\n")[1:]
-    for line in apk_lines:
-        stripped = line.strip()
-        if not stripped:
-            continue
-        paths.add(PurePosixPath("/" + stripped))
-    return paths
 
 
 def aws_lambda_package(
     executable_path: Path,
     sysroot_path: Path,
-    project_path: Path,
-    container: Container,
-    container_root: PurePosixPath,
+    environment,
     libc: bool,
-    musl_paths: set[PurePosixPath],
+    libc_paths: Set[PurePosixPath],
 ):
-    def local_path_to_container_path(local_path: Path) -> PurePosixPath:
-        return PurePosixPath(container_root / local_path.relative_to(project_path))
-
     zip = io.BytesIO()
-    with zipfile.ZipFile(zip, "a") as zf:
+    with zipfile.ZipFile(
+        zip, "a", compression=zipfile.ZIP_BZIP2, compresslevel=9
+    ) as zf:
         bin = PurePosixPath("bin")
         lib = PurePosixPath("lib")
-        _, ldd_output = container.exec_run(
-            [
-                "ldd",
-                local_path_to_container_path(executable_path).as_posix(),
-            ]
-        )
-        lib_paths: set[PurePosixPath] = set()
 
-        for path in musl_paths:
-            lib_paths.add(path)
+        lib_paths: Set[PurePosixPath] = set()
 
-        ldd_lines = ldd_output.decode("utf-8").split("\n")
-        for line in ldd_lines:
-            stripped = line.strip()
-            parts = stripped.split(" ")
-            if len(parts) == 2:
-                lib_path = PurePosixPath(parts[0])
-                lib_paths.add(lib_path)
-            elif len(parts) == 4:
-                lib_path = PurePosixPath(parts[2])
-                lib_paths.add(lib_path)
+        lib_paths = environment.ldd(executable_path)
 
-        for lib_path in lib_paths:
-            local_path = sysroot_path / lib_path.relative_to(lib_path.anchor)
+        def add_path(lib_path):
+            if sysroot_path:
+                local_path = sysroot_path / lib_path.relative_to(lib_path.anchor)
+            else:
+                local_path = Path(lib_path)
             if local_path.name.startswith("ld-"):
                 lib_zinfo = get_zinfo(
                     zf, (lib / local_path.name).as_posix(), 0o755 << 16
@@ -249,19 +310,31 @@ def aws_lambda_package(
                 )
             zf.writestr(lib_zinfo, local_path.read_bytes())
 
+        for lib_path in lib_paths:
+            add_path(lib_path)
+        if libc:
+            for lib_path in libc_paths:
+                if lib_path in lib_paths:
+                    continue
+                add_path(lib_path)
+
         exec_zinfo = get_zinfo(zf, (bin / executable_path.name).as_posix(), 0o755 << 16)
         zf.writestr(exec_zinfo, executable_path.read_bytes())
         pkg_bin_filename = executable_path.name
 
-        if libc:
-            pkg_ld_filter = list(filter(lambda p: p.name.startswith("ld-"), lib_paths))
-            if len(pkg_ld_filter) != 1:
-                raise Exception(
-                    "Expected exactly one ld-* library, found {}".format(
-                        len(pkg_ld_filter)
-                    )
+        pkg_ld_filter = list(
+            filter(lambda p: p.name.startswith("ld-") and p in lib_paths, lib_paths)
+        )
+        if len(pkg_ld_filter) != 1:
+            raise Exception(
+                "Expected exactly one ld-* library, found {}: {}".format(
+                    len(pkg_ld_filter), ", ".join(map(str, pkg_ld_filter))
                 )
-            pkg_ld = pkg_ld_filter[0]
+            )
+        pkg_ld = pkg_ld_filter[0]
+
+        if libc:
+            print("loader: " + pkg_ld.as_posix())
 
             zf.writestr(
                 get_zinfo(zf, "bootstrap", 0o755 << 16),  # ?rwxrwxrwx
@@ -272,6 +345,8 @@ def aws_lambda_package(
                 get_zinfo(zf, "bootstrap", 0o755 << 16),  # ?rwxrwxrwx
                 generate_no_libc_bootstrap_script(pkg_bin_filename),
             )
+    with open("output.zip", "wb") as f:
+        f.write(zip.getbuffer())
     return zip
 
 
@@ -289,19 +364,16 @@ def handle_entry_point(
     strip: bool,
     deploy: bool,
     function_role_arn: str,
-    musl_paths: set[PurePosixPath],
+    environment,
+    musl_paths: Set[PurePosixPath],
 ):
     executable_path = entry_file_path
     if strip:
-        executable_path = strip_binary(
-            entry_file_path, project_path, container, container_root
-        )
+        executable_path = strip_binary(entry_file_path, environment)
     zip = aws_lambda_package(
         executable_path,
         sysroot_path,
-        project_path,
-        container,
-        container_root,
+        environment,
         libc,
         musl_paths,
     )
@@ -392,14 +464,6 @@ def handle_entry_point(
             )
 
 
-container = docker_client.containers.run(
-    image,
-    ["tail", "-f", "/dev/null"],
-    detach=True,
-    volumes={str(project_path): {"bind": container_root.as_posix(), "mode": "rw"}},
-)
-
-
 json_path = input_path.with_suffix(".json")
 
 with json_path.open("r") as f:
@@ -407,8 +471,8 @@ with json_path.open("r") as f:
 
 
 entry_points = data["entry_points"]
-with ContainerWrapper(container) as container:
-    musl_paths = get_musl_paths(container)
+with EnvironmentWrapper(environment) as e:
+    libc_paths = environment.get_libc_paths()
 
     threads: List[Thread] = []
     print("Deploying {} lambda functions".format(len(entry_points)))
@@ -431,7 +495,8 @@ with ContainerWrapper(container) as container:
                 strip,
                 deploy,
                 function_role_arn,
-                musl_paths,
+                environment,
+                libc_paths,
             ),
         )
         threads.append(thread)
