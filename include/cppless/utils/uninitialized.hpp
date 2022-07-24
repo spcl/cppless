@@ -7,14 +7,12 @@ template<class T>
 union uninitialized_data
 {
   T m_self;
-  std::aligned_storage_t<sizeof(T), alignof(T)> m_data;
   /**
    * @brief The constructor initializes `m_data`, thus m_self is keeps being
    * uninitialized. This operation is save when we assume that the
    * unarchiving of the lambda restores all internal fields
    */
   uninitialized_data()
-      : m_data()
   {
   }
   /**
