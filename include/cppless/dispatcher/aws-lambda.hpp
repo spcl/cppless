@@ -1,5 +1,6 @@
 #pragma once
 
+#include <fstream>
 #include <memory>
 #include <set>
 #include <sstream>
@@ -21,6 +22,7 @@
 #include <cppless/utils/fixed_string_serialization.hpp>
 #include <cppless/utils/tracing.hpp>
 #include <cppless/utils/uninitialized.hpp>
+#include <nlohmann/json.hpp>
 
 #ifndef TARGET_NAME
 #  define TARGET_NAME "cppless"  // NOLINT
@@ -520,8 +522,66 @@ class aws_lambda_env_dispatcher : public Base
 {
   static auto from_env() -> Base
   {
-    cppless::aws::lambda::client lambda_client;
-    auto key = lambda_client.create_derived_key_from_env();
+    std::string aws_region;
+    std::string aws_access_key_id;
+    std::string aws_secret_access_key;
+
+    auto* env_aws_region = std::getenv("AWS_REGION");
+    if (env_aws_region != nullptr) {
+      aws_region = env_aws_region;
+    }
+    auto* env_aws_access_key_id = std::getenv("AWS_ACCESS_KEY_ID");
+    if (env_aws_access_key_id != nullptr) {
+      aws_access_key_id = env_aws_access_key_id;
+    }
+    auto* env_aws_secret_access_key = std::getenv("AWS_SECRET_ACCESS_KEY");
+    if (env_aws_secret_access_key != nullptr) {
+      aws_secret_access_key = env_aws_secret_access_key;
+    }
+
+    if (aws_region.empty() || aws_access_key_id.empty()
+        || aws_secret_access_key.empty())
+    {
+      auto config_path = std::filesystem::path(std::getenv("HOME")) / ".cppless"
+          / "config.json";
+      std::ifstream ifs(config_path);
+      if (!ifs.fail()) {
+        nlohmann::json jf = nlohmann::json::parse(ifs);
+        std::string profile_name = "default";
+        nlohmann::json config;
+        for (auto& profile : jf["profiles"]) {
+          if (profile["name"] == profile_name) {
+            config = profile["config"];
+          }
+        }
+        nlohmann::json aws_config = config["providers"]["aws"];
+        if (aws_region.empty()) {
+          aws_region = aws_config["region"];
+        }
+        if (aws_access_key_id.empty()) {
+          aws_access_key_id = aws_config["access_key_id"];
+        }
+        if (aws_secret_access_key.empty()) {
+          aws_secret_access_key = aws_config["secret_access_key"];
+        }
+      }
+    }
+
+    if (aws_region.empty() || aws_access_key_id.empty()
+        || aws_secret_access_key.empty())
+    {
+      throw std::runtime_error("missing aws credentials");
+    }
+
+    cppless::aws::lambda::client lambda_client(aws_region);
+
+    auto* session_token_env = std::getenv("AWS_SESSION_TOKEN");  // NOLINT
+    std::optional<std::string> session_token;
+    if (session_token_env != nullptr) {
+      session_token = std::string {session_token_env};
+    }
+    auto key = lambda_client.create_derived_key(
+        aws_access_key_id, aws_secret_access_key, session_token);
     Base aws {lambda_client, key};
     return aws;
   }

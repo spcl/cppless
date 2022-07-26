@@ -30,7 +30,6 @@ function(aws_lambda_package_target target)
         "--target-name" ${target}
         "--strip"
         "--deploy"
-        "--function-role-arn" ${AWS_LAMBDA_FUNCTION_ROLE_ARN}
         $<TARGET_FILE:${target}>
         DEPENDS ${target})
 endfunction()
@@ -77,7 +76,6 @@ function(aws_lambda_serverless_target NAME)
                 -DCMAKE_BUILD_TYPE=Release
                 -DCMAKE_TOOLCHAIN_FILE=${CMAKE_SOURCE_DIR}/cmake/toolchains/${CPPLESS_TOOLCHAIN}/toolchain.cmake
                 -DCMAKE_MAKE_PROGRAM=${CMAKE_MAKE_PROGRAM}
-                -DAWS_LAMBDA_FUNCTION_ROLE_ARN=${AWS_LAMBDA_FUNCTION_ROLE_ARN}
             INSTALL_COMMAND true
             BUILD_COMMAND cmake --build . --target aws_lambda_package_${NAME}
             )

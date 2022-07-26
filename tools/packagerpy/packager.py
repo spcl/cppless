@@ -4,6 +4,7 @@ import base64
 import hashlib
 import io
 import json
+import os
 import re
 import subprocess
 import time
@@ -91,7 +92,36 @@ deploy = args.deploy
 function_role_arn = args.function_role_arn
 target_name = args.target_name
 
-session = boto3.session.Session()
+region = os.environ.get("AWS_REGION", "")
+access_key_id = os.environ.get("AWS_ACCESS_KEY_ID", "")
+secret_access_key = os.environ.get("AWS_SECRET_ACCESS_KEY", "")
+
+if (
+    region == ""
+    or access_key_id == ""
+    or secret_access_key == ""
+    or function_role_arn == ""
+):
+    config_path = Path("~/.cppless/config.json").expanduser()
+    if config_path.exists():
+        with config_path.open("r") as f:
+            config = json.load(f)
+        profile_name = "default"
+        for profile in config["profiles"]:
+            if profile["name"] == profile_name:
+                active_profile = profile["config"]
+                break
+        aws_config = active_profile["providers"]["aws"]
+        if region == "":
+            region = aws_config["region"]
+        if access_key_id == "":
+            access_key_id = aws_config["access_key_id"]
+        if secret_access_key == "":
+            secret_access_key = aws_config["secret_access_key"]
+        if function_role_arn == "":
+            function_role_arn = aws_config["function_role_arn"]
+
+session = boto3.session.Session(access_key_id, secret_access_key, None, region)
 aws_lambda: LambdaClient = session.client("lambda")
 
 image = args.image
@@ -127,14 +157,12 @@ class NativeEnvironment:
         pass
 
     def strip(self, path):
-        print(path)
         _ = subprocess.run(["strip", path])
 
     def ldd(self, path):
         ldd = subprocess.run(["ldd", path], capture_output=True)
         ldd_output = ldd.stdout
         paths = parse_ldd(ldd_output)
-        print(paths)
         return paths
 
     def get_libc_paths(self):
@@ -334,8 +362,6 @@ def aws_lambda_package(
         pkg_ld = pkg_ld_filter[0]
 
         if libc:
-            print("loader: " + pkg_ld.as_posix())
-
             zf.writestr(
                 get_zinfo(zf, "bootstrap", 0o755 << 16),  # ?rwxrwxrwx
                 generate_libc_bootstrap_script(pkg_ld.name, pkg_bin_filename),
