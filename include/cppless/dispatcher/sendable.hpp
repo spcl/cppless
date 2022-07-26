@@ -15,6 +15,16 @@
 namespace cppless
 {
 
+/**
+ * @brief Generates a unique identifier for the type `T`, returns a fixed_string
+ * with the `char` as the underlying type. The variadic types `Args` are
+ * appended and are thought to represent types with which a generic function is
+ * overloaded.
+ *
+ * @tparam L The lambda type to generate the identifier for
+ * @tparam Args The variadic types to append to the identifier
+ * @return constexpr auto The unique identifier for the type `T`
+ */
 template<class L, class... Args>
 constexpr auto function_identifier()
 {
@@ -23,6 +33,18 @@ constexpr auto function_identifier()
   return prefix + "@" + suffix + "<" + types_unique_names<Args...>() + ">";
 }
 
+/**
+ * @brief Serializes `l` into `ar`
+ *
+ * @tparam Archive - The archive type to serialize into
+ * @tparam Lambda - The type of the lambda to serialize
+ * @tparam X - The index up to which point the captures are already serialized
+ * @tparam L - The number of captures to serialize
+ * @tparam Args - The variadic types of the already extracted captures
+ * @param ar - The archive to serialize into
+ * @param l - The lambda to serialize
+ * @param args - The already extracted captures
+ */
 template<class Archive, class Lambda, int X, int L, class... Args>
 inline void serialize_helper(Archive& ar, Lambda& l, const Args&... args)
 {
@@ -35,6 +57,16 @@ inline void serialize_helper(Archive& ar, Lambda& l, const Args&... args)
   }
 }
 
+/**
+ * @brief The receivable counterpart of the capture type of a lambda expression.
+ * This type is used to generate an alternative entry point with the dispatcher
+ * in use. This class doesn't have any constructors, thus has to be built from
+ * uninitialized data by deserialization.
+ *
+ * @tparam Lambda - The type of the underlying lambda
+ * @tparam Res - The type of the return value of the lambda
+ * @tparam Args - The types of the captured arguments
+ */
 template<class Lambda, class Res, class... Args>
 class receivable_lambda
 {
@@ -47,6 +79,12 @@ public:
       serialize_helper<Archive, Lambda, 0, capture_count>(ar, m_lambda);
     }
   }
+  /**
+   * @brief Calls the underlying lambda instance
+   *
+   * @param args - The arguments to pass to the lambda
+   * @return Res - The return value of the lambda
+   */
   auto operator()(Args... args) -> Res
   {
     return m_lambda(args...);
@@ -56,6 +94,11 @@ private:
   Lambda m_lambda;
 };
 
+/**
+ * @brief An abstract base class for a task implementation.
+ *
+ * @tparam Dispatcher - The dispatcher type the task is associated with
+ */
 template<class Dispatcher>
 class task_base
 {
@@ -136,8 +179,7 @@ public:
           function_identifier<Lambda, Args...>())))) static auto
   main(int argc, char* argv[]) -> int
   {
-    return Dispatcher::template main<Lambda,
-                                     receivable_lambda<Lambda, Res, Args...>,
+    return Dispatcher::template main<receivable_lambda<Lambda, Res, Args...>,
                                      Res,
                                      Args...>(argc, argv);
   }

@@ -133,11 +133,11 @@ public:
     }
   }
 
-  template<class Lambda, class Receivable, class Res, class... Args>
+  template<class Receivable, class Res, class... Args>
   static auto main(int /*argc*/, char* /*argv*/[]) -> int  // NOLINT
   {
     using uninitialized_recv = cppless::uninitialized_data<Receivable>;
-    input_archive iar(std::cin);
+    request_input_archive iar(std::cin);
     uninitialized_recv u;
     std::tuple<Args...> s_args;
     // task_data takes both of its constructor arguments by reference, thus
@@ -148,7 +148,7 @@ public:
 
     Res res = std::apply(u.m_self, s_args);
     {
-      output_archive oar(std::cout);
+      response_output_archive oar(std::cout);
       oar(res);
     }
 
@@ -161,8 +161,7 @@ public:
     using id_type = int;
     using dispatcher_type = local_dispatcher;
 
-    explicit instance(
-        local_dispatcher<input_archive, output_archive>& dispatcher)
+    explicit instance(local_dispatcher<InputArchive, OutputArchive>& dispatcher)
         : m_dispatcher(dispatcher)
     {
     }
@@ -286,7 +285,7 @@ public:
      * all threads are joined when the instance goes out of scope.
      */
     std::vector<std::thread> m_threads;
-    local_dispatcher<input_archive, output_archive>& m_dispatcher;
+    local_dispatcher<InputArchive, OutputArchive>& m_dispatcher;
   };
 
   /**

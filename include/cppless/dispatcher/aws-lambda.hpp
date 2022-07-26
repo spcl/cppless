@@ -477,7 +477,7 @@ public:
     }
   };
 
-  template<class Lambda, class Receivable, class Res, class... Args>
+  template<class Receivable, class Res, class... Args>
   static auto main(int /*argc*/, char* /*argv*/[]) -> int
   {
     using invocation_response = ::aws::lambda_runtime::invocation_response;
