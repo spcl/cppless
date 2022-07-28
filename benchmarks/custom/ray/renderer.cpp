@@ -161,9 +161,7 @@ void aws_lambda_renderer::start(scene sc,
 {
   auto start = [sc, &target, &mut, &progress, &finished, &cv]()
   {
-    cppless::aws::lambda::client lambda;
-    auto key = lambda.create_derived_key_from_env();
-    dispatcher aws(lambda, key);
+    dispatcher aws;
     auto instance = aws.create_instance();
     std::mt19937 generator(42);
     auto bvh_root = bvh_node(sc.world, generator);

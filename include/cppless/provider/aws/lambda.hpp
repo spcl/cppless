@@ -5,6 +5,7 @@
 #include <sstream>
 #include <string>
 #include <utility>
+#include <variant>
 #include <vector>
 
 #include <boost/beast/http.hpp>
@@ -66,15 +67,9 @@ public:
     span.set_tag("function_qualifier", m_qualifier);
     span.set_tag("payload_size", std::to_string(m_payload.size()));
   }
-  [[nodiscard]] auto date() const -> std::string
-  {
-    return m_date;
-  }
+  [[nodiscard]] auto date() const -> std::string { return m_date; }
 
-  static auto http_request_method() -> std::string
-  {
-    return "POST";
-  }
+  static auto http_request_method() -> std::string { return "POST"; }
 
   [[nodiscard]] auto canonical_url() const -> std::string
   {
@@ -96,10 +91,7 @@ public:
     return ctx.final();
   }
 
-  [[nodiscard]] auto payload() const -> std::string
-  {
-    return m_payload;
-  }
+  [[nodiscard]] auto payload() const -> std::string { return m_payload; }
 };
 
 struct invocation_response

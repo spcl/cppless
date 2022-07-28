@@ -79,7 +79,7 @@ private:
   std::vector<tile> m_tiles;
 };
 
-using dispatcher = cppless::aws_lambda_nghttp2_dispatcher<>;
+using dispatcher = cppless::aws_lambda_nghttp2_dispatcher<>::from_env;
 constexpr unsigned int memory_limit = 2048;
 constexpr unsigned int ephemeral_storage = 64;
 namespace lambda = cppless::aws;
