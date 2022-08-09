@@ -18,7 +18,7 @@ set(CMAKE_CPP_COMPILER_TARGET "x86_64-alpine-linux-musl")
 set(COMMON_FLAGS "")
 set(COMPILER_FLAGS "${COMMON_FLAGS} -O3")
 
-set(CMAKE_CXX_FLAGS "${COMPILER_FLAGS}")
+set(CMAKE_CXX_FLAGS "${COMPILER_FLAGS} -march=haswell")
 # Convince libcurl that the target platform has socket and fcntl_o_nonblock
-set(CMAKE_C_FLAGS "${COMPILER_FLAGS} -DHAVE_SOCKET -DHAVE_FCNTL_O_NONBLOCK")
+set(CMAKE_C_FLAGS "${COMPILER_FLAGS} -march=haswell -DHAVE_SOCKET -DHAVE_FCNTL_O_NONBLOCK")
 
