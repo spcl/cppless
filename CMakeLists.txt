@@ -57,6 +57,7 @@ conan_cmake_configure(REQUIRES cereal/1.3.1
                                openssl/3.0.3
                                libcurl/7.80.0
                                argparse/2.3
+                               boost/1.78.0
                       GENERATORS cmake_find_package
                       OPTIONS libnghttp2:with_asio=True
                               boost:without_locale=True
@@ -66,6 +67,15 @@ conan_cmake_configure(REQUIRES cereal/1.3.1
                               boost:without_coroutine=True
                               boost:without_fiber=True
                               boost:without_stacktrace=True
+                              boost:without_contract=True
+                              boost:without_filesystem=True
+                              boost:without_json=True
+                              boost:without_nowide=True
+                              boost:without_test=True
+                              boost:without_timer=True
+                              boost:without_type_erasure=True
+                              boost:without_wave=True
+                              
                               openssl:no_async=True)
 
 # The find-package conan generator uses the variables which are not necessarily defined
