@@ -9,6 +9,8 @@
 #include <string>
 #include <thread>
 
+#include <argparse/argparse.hpp>
+
 #include "bvh.hpp"
 #include "camera.hpp"
 #include "color.hpp"
@@ -46,12 +48,17 @@ hittable_list random_scene(std::mt19937& prng)
           auto albedo = color::random(prng) * color::random(prng);
           sphere_material = std::make_shared<lambertian>(albedo);
           world.add(make_shared<sphere>(center, 0.2, sphere_material));
-        } else if (choose_mat < 0.95) {
+        } else if (choose_mat < 0.65) {
           // metal
           auto albedo = color::random(0.5, 1, prng);
           auto fuzz = distribution(prng) / 2;
           sphere_material = std::make_shared<metal>(albedo, fuzz);
-          world.add(make_shared<sphere>(center, 0.2, sphere_material));
+          world.add(make_shared<sphere>(center, 0.4, sphere_material));
+        } else if (choose_mat < 0.95) {
+          // emissive
+          auto light_color = color::random(5, 10, prng);
+          sphere_material = std::make_shared<diffuse_light>(light_color);
+          world.add(make_shared<sphere>(center, 0.1, sphere_material));
         } else {
           // glass
           sphere_material = std::make_shared<dielectric>(1.5);
@@ -70,17 +77,51 @@ hittable_list random_scene(std::mt19937& prng)
   auto material3 = std::make_shared<metal>(color(0.7, 0.6, 0.5), 0.0);
   world.add(make_shared<sphere>(point3(4, 1, 0), 1.0, material3));
 
+  auto material4 = std::make_shared<diffuse_light>(color(0.7, 0.4, 0.0));
+  world.add(make_shared<sphere>(point3(-8, 1, 0), 1.0, material4));
+
   return world;
 }
 
 __attribute((weak)) int main(int argc, char* argv[])
 {
+  argparse::ArgumentParser program("ray_bench");
+
+  program.add_argument("-w", "--width").scan<'d', int>();
+  program.add_argument("-a", "--aspect").scan<'g', double>();
+  program.add_argument("-s", "--samples").scan<'d', int>();
+  program.add_argument("-d", "--depth").scan<'d', int>();
+
+  program.add_argument("--dispatcher")
+      .default_value(false)
+      .implicit_value(true);
+  program.add_argument("--dispatcher-tile-width")
+      .help("Prefix length value when using the dispatcher implementation")
+      .default_value(64)
+      .scan<'i', unsigned int>();
+  program.add_argument("--dispatcher-tile-height")
+      .help("Prefix length value when using the dispatcher implementation")
+      .default_value(64)
+      .scan<'i', unsigned int>();
+  program.add_argument("--dispatcher-trace-output")
+      .default_value(std::string {""});
+  program.add_argument("--serial").default_value(false).implicit_value(true);
+  program.add_argument("--threads").default_value(false).implicit_value(true);
+
+  try {
+    program.parse_args(argc, argv);
+  } catch (const std::runtime_error& err) {
+    std::cerr << err.what() << std::endl;
+    std::cerr << program;
+    std::exit(1);
+  }
+
   // Image
-  const auto aspect_ratio = 3.0 / 2.0;
-  const int image_width = 900;
+  const double aspect_ratio = program.get<double>("-a");
+  const int image_width = program.get<int>("-w");
   const int image_height = static_cast<int>(image_width / aspect_ratio);
-  const int samples_per_pixel = 120;
-  const int max_depth = 50;
+  const int samples_per_pixel = program.get<int>("-s");
+  const int max_depth = program.get<int>("-d");
 
   // World
   std::mt19937 generator(42);
@@ -106,11 +147,15 @@ __attribute((weak)) int main(int argc, char* argv[])
   std::string arg(argv[1]);
 
   std::unique_ptr<renderer> r;
-  if (arg == "aws_lambda_renderer") {
-    r = std::make_unique<aws_lambda_renderer>();
-  } else if (arg == "single_threaded_renderer") {
+  cppless::tracing_span_container spans;
+  auto root = spans.create_root("root").start();
+  if (program["--dispatcher"] == true) {
+    auto tile_width = program.get<unsigned int>("--dispatcher-tile-width");
+    auto tile_height = program.get<unsigned int>("--dispatcher-tile-height");
+    r = std::make_unique<aws_lambda_renderer>(tile_width, tile_height, root);
+  } else if (program["--serial"] == true) {
     r = std::make_unique<single_threaded_renderer>();
-  } else if (arg == "multi_threaded_renderer") {
+  } else if (program["--threads"] == true) {
     r = std::make_unique<multi_threaded_renderer>(8);
   }
   r->start(
@@ -135,9 +180,14 @@ __attribute((weak)) int main(int argc, char* argv[])
     std::cerr << std::setw(5) << std::setfill('0') << std::fixed
               << std::setprecision(2) << "\rProgress: " << progress * 100 << "%"
               << std::flush;
-    if (current_finished)
+    if (current_finished) {
       break;
-    cv.wait(lk, [&]() { return progress != current_progress; });
+}
+    cv.wait(lk,
+            [&]() {
+              return progress != current_progress
+                  || current_finished != finished;
+            });
   }
 
   r->join();
@@ -145,4 +195,14 @@ __attribute((weak)) int main(int argc, char* argv[])
   std::cout << img;
 
   std::cerr << "\nDone.\n";
+
+  // If using dispatcher and option is set, write trace
+  if (program["--dispatcher"] == true) {
+    auto trace_location = program.get<std::string>("--dispatcher-trace-output");
+    if (!trace_location.empty()) {
+      std::ofstream trace_file(trace_location);
+      nlohmann::json spans_json = spans;
+      trace_file << spans_json.dump(2);
+    }
+  }
 }

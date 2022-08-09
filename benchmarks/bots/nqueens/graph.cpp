@@ -52,19 +52,15 @@ auto nqueens(graph_args args) -> unsigned int
                    std::span<unsigned char> {scratchpad},
                    prefixes);
 
-  std::vector<cppless::shared_future<unsigned int>> futures;
+  std::vector<cppless::shared_future<unsigned long>> futures;
 
   auto start = schedule(builder);
   for (unsigned int i = 0; i < prefixes.size(); i += prefix_length) {
-    std::vector<unsigned int> prefix(prefixes.begin() + i,
-                                     prefixes.begin() + i + prefix_length);
+    std::vector<unsigned char> prefix(prefixes.begin() + i,
+                                      prefixes.begin() + i + prefix_length);
 
-    auto task = [prefix, size, prefix_length]
-    {
-      auto scratchpad = std::vector<unsigned char>(size);
-      std::copy(prefix.begin(), prefix.end(), scratchpad.begin());
-      return nqueens_serial(prefix_length, scratchpad);
-    };
+    auto task = [prefix, size]() mutable
+    { return nqueens_serial_prefix(size, prefix); };
     futures.push_back(then<cpu_intensive>(start, task)->future());
   }
   builder.await_all();

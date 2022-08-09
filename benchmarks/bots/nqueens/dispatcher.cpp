@@ -1,4 +1,6 @@
 #include <atomic>
+#include <cstddef>
+#include <numeric>
 #include <span>
 #include <thread>
 #include <tuple>
@@ -23,17 +25,17 @@ using cpu_intensive =
     lambda::config<lambda::with_memory<memory_limit>,
                    lambda::with_ephemeral_storage<ephemeral_storage>>;
 
-auto nqueens(dispatcher_args args) -> unsigned int
+auto nqueens(dispatcher_args args) -> unsigned long
 {
   auto size = args.size;
-  auto prefix_length = args.prefix_length;
+  std::size_t prefix_length = args.prefix_length;
 
   dispatcher aws;
   auto instance = aws.create_instance();
 
-  auto prefixes = std::vector<unsigned char>();
+  std::vector<unsigned char> prefixes;
   prefixes.reserve(pow(size, prefix_length));
-  auto scratchpad = std::vector<unsigned char>(size);
+  std::vector<unsigned char> scratchpad(size);
 
   nqueens_prefixes(0,
                    prefix_length,
@@ -41,25 +43,20 @@ auto nqueens(dispatcher_args args) -> unsigned int
                    size,
                    std::span<unsigned char> {scratchpad},
                    prefixes);
+  std::size_t num_prefixes = prefixes.size() / prefix_length;
+  std::vector<unsigned long> results(num_prefixes);
 
-  std::vector<unsigned int> futures(prefixes.size());
+  for (unsigned int i = 0; i < num_prefixes; i++) {
+    std::vector<unsigned char> prefix(
+        &prefixes[prefix_length * i],
+        &prefixes[prefix_length * i + prefix_length]);
 
-  for (unsigned int i = 0; i < prefixes.size(); i += prefix_length) {
-    std::vector<unsigned int> prefix(prefixes.begin() + i,
-                                     prefixes.begin() + i + prefix_length);
-    auto task = [prefix, size]
-    {
-      auto scratchpad = std::vector<unsigned char>(size);
-      std::copy(prefix.begin(), prefix.end(), scratchpad.begin());
-      return nqueens_serial(prefix.size(), scratchpad);
-    };
-    cppless::dispatch<cpu_intensive>(instance, task, futures[i], {});
+    auto task = [size](std::vector<unsigned char> prefix)
+    { return nqueens_serial_prefix(size, prefix); };
+    cppless::dispatch<cpu_intensive>(instance, task, results[i], {prefix});
   }
-  cppless::wait(instance, futures.size());
-  unsigned int res = 0;
-  for (auto& f : futures) {
-    res += f;
-  }
+  cppless::wait(instance, num_prefixes);
+  unsigned long res = std::accumulate(results.begin(), results.end(), 0);
 
   return res;
 }

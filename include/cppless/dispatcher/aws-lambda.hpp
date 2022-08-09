@@ -129,7 +129,7 @@ template<class RequestArchive, class ResponseArchive>
 class base_aws_lambda_dispatcher;
 
 template<class RequestArchive = json_binary_archive,
-         class ResponseArchive = binary_archive>
+         class ResponseArchive = json_binary_archive>
 class aws_lambda_nghttp2_dispatcher;
 
 template<class RequestArchive, class ResponseArchive>
@@ -235,6 +235,8 @@ public:
       payload = RequestArchive::serialize(data);
     }
 
+    std::cout << "payload size: " << payload.size() << std::endl;
+
     int id = m_started++;
     auto req =
         std::make_unique<cppless::aws::lambda::nghttp2_invocation_request>(
@@ -253,11 +255,11 @@ public:
       req->submit(session, m_lambda_client, m_key, span);
     };
 
+
     auto cb = [this, id, &result_target, span](
                   const cppless::aws::lambda::invocation_response& res) mutable
     {
       scoped_tracing_span deserialization_span(span, "deserialization");
-
       ResponseArchive::deserialize(res.body, result_target);
 
       m_finished.insert(id);
@@ -338,10 +340,7 @@ public:
     m_tls.set_default_verify_paths();
   }
 
-  ~aws_lambda_beast_dispatcher_instance()
-  {
-    m_ioc.run();
-  }
+  ~aws_lambda_beast_dispatcher_instance() { m_ioc.run(); }
 
   // Delete copy constructor
   aws_lambda_beast_dispatcher_instance(
@@ -502,15 +501,9 @@ public:
     return 0;
   }
 
-  [[nodiscard]] auto lambda_client() const noexcept
-  {
-    return m_client;
-  }
+  [[nodiscard]] auto lambda_client() const noexcept { return m_client; }
 
-  [[nodiscard]] auto key() const noexcept
-  {
-    return m_key;
-  }
+  [[nodiscard]] auto key() const noexcept { return m_key; }
 
 private:
   cppless::aws::lambda::client m_client;
@@ -578,7 +571,7 @@ class aws_lambda_env_dispatcher : public Base
     auto* session_token_env = std::getenv("AWS_SESSION_TOKEN");  // NOLINT
     std::optional<std::string> session_token;
     if (session_token_env != nullptr) {
-      session_token = std::string {session_token_env};
+      session_token = session_token_env;
     }
     auto key = lambda_client.create_derived_key(
         aws_access_key_id, aws_secret_access_key, session_token);

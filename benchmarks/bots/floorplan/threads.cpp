@@ -119,7 +119,7 @@ auto floorplan(threads_args args) -> std::tuple<int, result_data>
 
   add_cell_threads(threads,
                    futures,
-                   2,
+                   args.cutoff,
                    result,
                    1,
                    footprint,

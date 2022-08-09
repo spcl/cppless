@@ -1,4 +1,5 @@
 #include <future>
+#include <memory>
 #include <span>
 #include <thread>
 #include <vector>
@@ -66,12 +67,9 @@ auto add_cell_dispatcher(typename Dispatcher::instance& instance,
         /* if area is less than best area */
       } else if (area < result.min_area) {
         if (cutoff == 0) {
-          std::vector<cell> cell_vector {cells.begin(), cells.end()};
-          auto task = [min_area = result.min_area,
-                       cell_vector,
-                       footprint,
-                       parent_board = board,
-                       id]() mutable
+          auto task =
+              [min_area = result.min_area, footprint, parent_board = board, id](
+                  std::vector<cell> cell_vector)
           {
             board_array board = parent_board;
             std::span<cell> cells {cell_vector};
@@ -80,12 +78,12 @@ auto add_cell_dispatcher(typename Dispatcher::instance& instance,
             result.min_area = min_area;
 
             add_cell(result, cells[id].next, footprint, board, cells);
-
             return result;
           };
-          auto& future = *futures.emplace_back();
-          cppless::dispatch(instance, task, future, {});
-
+          auto& future = *futures.emplace_back(std::make_unique<result_data>());
+          cppless::dispatch(
+              instance, task, future, {{cells.begin(), cells.end()}});
+          // future = task({cells.begin(), cells.end()});
         } else {
           add_cell_dispatcher<Dispatcher>(instance,
                                           futures,
@@ -104,13 +102,11 @@ auto add_cell_dispatcher(typename Dispatcher::instance& instance,
   }
 }
 
-using dispatcher = cppless::aws_lambda_nghttp2_dispatcher<>;
+using dispatcher = cppless::aws_lambda_nghttp2_dispatcher<>::from_env;
 
 auto floorplan(dispatcher_args args) -> std::tuple<int, result_data>
 {
-  cppless::aws::lambda::client lambda_client;
-  auto key = lambda_client.create_derived_key_from_env();
-  dispatcher aws {lambda_client, key};
+  dispatcher aws;
   dispatcher::instance instance = aws.create_instance();
 
   std::vector<std::unique_ptr<result_data>> futures;
@@ -130,7 +126,7 @@ auto floorplan(dispatcher_args args) -> std::tuple<int, result_data>
 
   add_cell_dispatcher<dispatcher>(instance,
                                   futures,
-                                  2,
+                                  args.cutoff,
                                   result,
                                   1,
                                   footprint,

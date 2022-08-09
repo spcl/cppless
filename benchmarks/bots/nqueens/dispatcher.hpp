@@ -7,4 +7,4 @@ public:
   unsigned int prefix_length;
 };
 
-auto nqueens(dispatcher_args args) -> unsigned int;
+auto nqueens(dispatcher_args args) -> unsigned long;

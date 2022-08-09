@@ -10,7 +10,7 @@ class image
 {
 public:
   image() = default;
-  image(unsigned int width, unsigned int height, int samples_per_pixel)
+  image(unsigned long width, unsigned long height, int samples_per_pixel)
       : m_width(width)
       , m_height(height)
       , m_samples_per_pixel(samples_per_pixel)
@@ -18,41 +18,39 @@ public:
   {
   }
 
-  auto operator()(unsigned int x, unsigned int y) -> color&
+  auto operator()(unsigned long x, unsigned long y) -> color&
   {
     return m_data[y * m_width + x];
   }
 
-  auto operator()(unsigned int x, unsigned int y) const -> const color&
+  auto operator()(unsigned long x, unsigned long y) const -> const color&
   {
     return m_data[y * m_width + x];
   }
 
-  auto insert(unsigned int offset_x, unsigned int offset_y, const image& other)
+  auto insert(unsigned long offset_x,
+              unsigned long offset_y,
+              const image& other)
   {
-    unsigned int x_max = std::min(m_width, offset_x + other.width());
-    unsigned int y_max = std::min(m_height, offset_y + other.height());
-    for (unsigned int x = offset_x; x < x_max; x++) {
-      for (unsigned int y = offset_y; y < y_max; y++) {
-        (*this)(x, y) = other(x - offset_x, y - offset_y);
+    unsigned long x_max = std::min(m_width, offset_x + other.width());
+    unsigned long y_max = std::min(m_height, offset_y + other.height());
+    for (unsigned long y = offset_y; y < y_max; y++) {
+      for (unsigned long x = offset_x; x < x_max; x++) {
+        this->operator()(x, y) = other(x - offset_x, y - offset_y);
       }
     }
   }
 
-  [[nodiscard]] auto width() const -> unsigned int
-  {
-    return m_width;
-  }
+  [[nodiscard]] auto width() const -> unsigned long { return m_width; }
 
-  [[nodiscard]] auto height() const -> unsigned int
-  {
-    return m_height;
-  }
+  [[nodiscard]] auto height() const -> unsigned long { return m_height; }
 
   [[nodiscard]] auto samples_per_pixel() const -> int
   {
     return m_samples_per_pixel;
   }
+
+  auto clear() -> void { m_data.clear(); }
 
   template<class Archive>
   void serialize(Archive& ar)
@@ -61,8 +59,8 @@ public:
   }
 
 private:
-  unsigned int m_width;
-  unsigned int m_height;
+  unsigned long m_width;
+  unsigned long m_height;
   int m_samples_per_pixel;
   std::vector<color> m_data;
 };

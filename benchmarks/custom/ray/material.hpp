@@ -15,17 +15,46 @@ class material
 {
 public:
   material() = default;
-  virtual auto scatter(const ray& r_in,
-                       const hit_record& rec,
-                       color& attenuation,
-                       ray& scattered,
-                       std::mt19937& prng) const -> bool = 0;
+  [[nodiscard]] virtual auto scatter(const ray& r_in,
+                                     const hit_record& rec,
+                                     color& attenuation,
+                                     color& emitted,
+                                     ray& scattered,
+                                     std::mt19937& prng) const -> bool = 0;
   virtual ~material() = default;
   template<class Archive>
   void serialize(Archive& /*ar*/)
   {
   }
 };
+
+class diffuse_light : public material
+{
+public:
+  diffuse_light() = default;
+  explicit diffuse_light(const color& a)
+      : m_color(a)
+  {
+  }
+
+  auto scatter(const ray& r_in,
+               const hit_record& rec,
+               color& attenuation,
+               color& emitted,
+               ray& scattered,
+               std::mt19937& prng) const -> bool override;
+  ~diffuse_light() override = default;
+  template<class Archive>
+  void serialize(Archive& ar)
+  {
+    ar(cereal::base_class<material>(this), m_color);
+  }
+
+private:
+  color m_color;
+};
+
+CEREAL_REGISTER_TYPE(diffuse_light)  // NOLINT
 
 class lambertian : public material
 {
@@ -39,6 +68,7 @@ public:
   auto scatter(const ray& r_in,
                const hit_record& rec,
                color& attenuation,
+               color& emitted,
                ray& scattered,
                std::mt19937& prng) const -> bool override;
   ~lambertian() override = default;
@@ -67,6 +97,7 @@ public:
   auto scatter(const ray& r_in,
                const hit_record& rec,
                color& attenuation,
+               color& emitted,
                ray& scattered,
                std::mt19937& prng) const -> bool override;
   ~metal() override = default;
@@ -96,6 +127,7 @@ public:
   auto scatter(const ray& r_in,
                const hit_record& rec,
                color& attenuation,
+               color& emitted,
                ray& scattered,
                std::mt19937& prng) const -> bool override;
 

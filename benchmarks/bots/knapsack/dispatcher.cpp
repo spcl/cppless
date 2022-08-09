@@ -1,9 +1,8 @@
-#pragma once
-
 #include <algorithm>
 #include <limits>
 #include <memory>
 #include <span>
+#include <vector>
 #include <tuple>
 
 #include "./dispatcher.hpp"
@@ -26,19 +25,20 @@ inline auto knapsack_dispatcher(unsigned int split,
     auto child_items = items.subspan(1);
     std::vector<knapsack_item> items_vector(child_items.begin(),
                                             child_items.end());
-    auto task = [items_vector](int c, int v) mutable
+    auto task = [](std::vector<knapsack_item> items, int c, int v) mutable
     {
-      std::span<knapsack_item> items(items_vector);
       int best_so_far = std::numeric_limits<int>::min();
       return knapsack_serial(best_so_far, items, c, v);
     };
 
-    auto without_future = *futures.emplace_back();
-    cppless::dispatch(instance, task, without_future, {c, v});
+    auto& without_future = *futures.emplace_back(std::make_unique<int>());
+    cppless::dispatch(instance, task, without_future, {items_vector, c, v});
 
-    auto with_future = *futures.emplace_back();
-    cppless::dispatch(
-        instance, task, with_future, {c - items[0].weight, v + items[0].value});
+    auto& with_future = *futures.emplace_back(std::make_unique<int>());
+    cppless::dispatch(instance,
+                      task,
+                      with_future,
+                      {items_vector, c - items[0].weight, v + items[0].value});
   } else {
     knapsack_dispatcher<Dispatcher>(
         split, instance, items.subspan(1), futures, c, v);
@@ -52,13 +52,11 @@ inline auto knapsack_dispatcher(unsigned int split,
   }
 }
 
-using dispatcher = cppless::aws_lambda_nghttp2_dispatcher<>;
+using dispatcher = cppless::aws_lambda_nghttp2_dispatcher<>::from_env;
 
 auto knapsack(dispatcher_args args) -> int
 {
-  cppless::aws::lambda::client lambda_client;
-  auto key = lambda_client.create_derived_key_from_env();
-  dispatcher aws {lambda_client, key};
+  dispatcher aws;
   dispatcher::instance instance = aws.create_instance();
 
   std::vector<std::unique_ptr<int>> futures;
@@ -69,6 +67,7 @@ auto knapsack(dispatcher_args args) -> int
                                   futures,
                                   args.capacity,
                                   0);
+  std::cout << "number_of_tasks: " << futures.size() << std::endl;
   for ([[maybe_unused]] auto& f : futures) {
     instance.wait_one();
   }

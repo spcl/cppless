@@ -7,7 +7,6 @@
 
 auto nqueens(serial_args args) -> unsigned int
 {
-  auto scratchpad = std::vector<unsigned char>(args.size);
-  auto res = nqueens_serial(0, scratchpad);
+  auto res = nqueens_serial(args.size, 0, 0, 0);
   return res;
 }

@@ -175,7 +175,7 @@ constexpr auto types_unique_names_helper()
     return type_unique_name<T>();
   } else {
     return type_unique_name<T>() + make_fixed_string(", ")
-        + type_unique_name<Ts...>();
+        + types_unique_names_helper<Ts...>();
   }
 }
 

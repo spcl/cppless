@@ -3,9 +3,21 @@
 #include "hittable.hpp"
 #include "vec.hpp"
 
+auto diffuse_light::scatter(const ray& /*r_in*/,
+                            const hit_record&  /*rec*/,
+                            color&  /*attenuation*/,
+                            color& emitted,
+                            ray&  /*scattered*/,
+                            std::mt19937&  /*prng*/) const -> bool
+{
+  emitted = m_color;
+  return false;
+}
+
 auto lambertian::scatter(const ray& /*r_in*/,
                          const hit_record& rec,
                          color& attenuation,
+                         color&  /*emitted*/,
                          ray& scattered,
                          std::mt19937& prng) const -> bool
 {
@@ -21,6 +33,7 @@ auto lambertian::scatter(const ray& /*r_in*/,
 auto metal::scatter(const ray& r_in,
                     const hit_record& rec,
                     color& attenuation,
+                    color& /*emitted*/,
                     ray& scattered,
                     std::mt19937& prng) const -> bool
 {
@@ -42,6 +55,7 @@ static auto reflectance(double cosine, double ref_idx) -> double
 auto dielectric::scatter(const ray& r_in,
                          const hit_record& rec,
                          color& attenuation,
+                         color& /*emitted*/,
                          ray& scattered,
                          std::mt19937& prng) const -> bool
 {

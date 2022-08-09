@@ -29,8 +29,8 @@ inline auto quantize_image(int image_width,
 
   std::vector<tile> tiles;
   tiles.reserve(static_cast<long>(tiles_x) * tiles_y);
-  for (int x = 0; x < tiles_x; x++) {
-    for (int y = 0; y < tiles_y; y++) {
+  for (int x = 0; x < tiles_x - 1; x++) {
+    for (int y = 0; y < tiles_y - 1; y++) {
       tiles.push_back({
           .x = tile_width * x,
           .y = tile_height * y,
@@ -40,5 +40,29 @@ inline auto quantize_image(int image_width,
     }
   }
 
+  for (int x = 0; x < tiles_x - 1; x++) {
+    int y = tiles_y - 1;
+    tiles.push_back({.x = tile_width * x,
+                     .y = tile_height * y,
+                     .width = tile_width,
+                     .height = image_height - tile_height * y});
+  }
+  for (int y = 0; y < tiles_y - 1; y++) {
+    int x = tiles_x - 1;
+    tiles.push_back({.x = tile_width * x,
+                     .y = tile_height * y,
+                     .width = image_width - tile_width * x,
+                     .height = tile_height});
+  }
+
+  {
+    int x = tiles_x - 1;
+    int y = tiles_y - 1;
+
+    tiles.push_back({.x = tile_width * x,
+                     .y = tile_height * y,
+                     .width = image_width - tile_width * x,
+                     .height = image_height - tile_height * y});
+  }
   return tiles;
 }

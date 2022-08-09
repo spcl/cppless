@@ -30,15 +30,18 @@ static auto ray_color(const ray& r,
   if (world.hit(r, 0.001, infinity, rec)) {
     ray scattered;
     color attenuation;
-    if (rec.mat_ptr->scatter(r, rec, attenuation, scattered, prng)) {
-      return attenuation * ray_color(scattered, world, depth - 1, prng);
+    color emitted;
+    bool did_scatter =
+        rec.mat_ptr->scatter(r, rec, attenuation, emitted, scattered, prng);
+    if (!did_scatter) {
+      return emitted;
     }
-    return color(0, 0, 0);
+    return emitted + attenuation * ray_color(scattered, world, depth - 1, prng);
   }
 
   vec3 unit_direction = unit_vector(r.direction());
   auto t = 0.5 * (unit_direction.y() + 1.0);
-  return (1.0 - t) * color(1.0, 1.0, 1.0) + t * color(0.5, 0.7, 1.0);
+  return (1.0 - t) * color(0.3, 0.3, 0.3) + t * color(0.2, 0.3, 0.4);
 }
 
 void single_threaded_renderer::start(scene sc,
@@ -54,8 +57,8 @@ void single_threaded_renderer::start(scene sc,
   {
     std::mt19937 generator(42);
     std::uniform_real_distribution<double> distribution(0.0, 1.0);
-    for (int x = 0; x < target.width(); x++) {
-      for (int y = 0; y < target.height(); y++) {
+    for (int y = 0; y < target.height(); y++) {
+      for (int x = 0; x < target.width(); x++) {
         color c;
         for (int s = 0; s < sc.samples_per_pixel; ++s) {
           auto u = (x + distribution(generator)) / (target.width() - 1);
@@ -72,14 +75,14 @@ void single_threaded_renderer::start(scene sc,
 
       {
         std::scoped_lock lk(mut);
-        progress = static_cast<double>(x) / target.width();
+        progress = static_cast<double>(y) / target.height();
+        cv.notify_one();
       }
-
-      cv.notify_one();
     }
     {
       std::scoped_lock lk(mut);
       finished = true;
+      cv.notify_one();
     }
   };
 
@@ -90,6 +93,9 @@ void single_threaded_renderer::join()
 {
   m_worker->join();
 }
+
+constexpr int mt_tile_width = 128;
+constexpr int mt_tile_height = 128;
 
 void multi_threaded_renderer::start(scene sc,
                                     image& target,
@@ -102,46 +108,49 @@ void multi_threaded_renderer::start(scene sc,
 
   m_bvh_root = bvh_node(sc.world, generator);
 
-  m_tiles = quantize_image(target.width(), target.height(), 128, 128);
+  m_tiles = quantize_image(
+      target.width(), target.height(), mt_tile_width, mt_tile_height);
   std::cerr << "number_of_tiles: " << m_tiles.size() << std::endl;
 
   m_workers.reserve(m_num_workers);
   for (int i = 0; i < m_num_workers; i++) {
-    auto fn = [&]()
+    auto worker_fn = [this, &target, &progress, &finished, &cv, &mut, sc]()
     {
-      std::mt19937 generator(42);
+      std::mt19937 generator(42);  // NOLINT
       std::uniform_real_distribution<double> distribution(0.0, 1.0);
+      double width = static_cast<double>(target.width()) - 1;
+      double height = static_cast<double>(target.height()) - 1;
 
-      unsigned long current_tile = m_tile_index++;
-      while (current_tile < m_tiles.size()) {
-        tile t = m_tiles[current_tile];
+      unsigned long current_tile_index = m_tile_index++;
+      while (current_tile_index < m_tiles.size()) {
+        tile current_tile = m_tiles[current_tile_index];
 
-        image tile_img(t.width, t.height, sc.samples_per_pixel);
-        for (int x = t.x; x < t.width + t.x; x++) {
-          for (int y = t.y; y < t.height + t.y; y++) {
-            for (int s = 0; s < sc.samples_per_pixel; ++s) {
-              auto u = (x + distribution(generator)) / (target.width() - 1);
-              auto v = (y + distribution(generator)) / (target.height() - 1);
+        for (int x = current_tile.x; x < current_tile.width + current_tile.x;
+             x++) {
+          for (int y = current_tile.y; y < current_tile.height + current_tile.y;
+               y++) {
+            for (int s = 0; s < sc.samples_per_pixel; s++) {
+              auto u = (x + distribution(generator)) / width;
+              auto v = (y + distribution(generator)) / height;
               ray r = sc.cam.get_ray(u, v, generator);
-              tile_img(x - t.x, y - t.y) +=
-                  ray_color(r, m_bvh_root, sc.max_depth, generator);
+              target(x, y) += ray_color(r, m_bvh_root, sc.max_depth, generator);
             }
           }
         }
 
         {
           std::scoped_lock lk(mut);
-          target.insert(t.x, t.y, tile_img);
           m_finished_tiles++;
-          progress = static_cast<double>(m_finished_tiles) / m_tiles.size();
+          progress = static_cast<double>(m_finished_tiles)
+              / static_cast<double>(m_tiles.size());
           finished = m_finished_tiles == m_tiles.size();
+          cv.notify_one();
         }
-        cv.notify_one();
 
-        current_tile = m_tile_index++;
+        current_tile_index = m_tile_index++;
       }
     };
-    m_workers.emplace_back(fn);
+    m_workers.emplace_back(worker_fn);
   }
 }
 
@@ -159,7 +168,11 @@ void aws_lambda_renderer::start(scene sc,
                                 bool& finished,
                                 std::condition_variable& cv)
 {
-  auto start = [sc, &target, &mut, &progress, &finished, &cv]()
+  auto tiles = quantize_image(
+      target.width(), target.height(), m_tile_width, m_tile_height);
+  std::cerr << "number_of_tiles: " << tiles.size() << std::endl;
+
+  auto start = [sc, &target, &mut, &progress, &finished, &cv, tiles, this]()
   {
     dispatcher aws;
     auto instance = aws.create_instance();
@@ -191,12 +204,13 @@ void aws_lambda_renderer::start(scene sc,
       return tile_img;
     };
 
-    auto tiles = quantize_image(target.width(), target.height(), 64, 64);
     std::vector<image> images(tiles.size());
-
     for (int i = 0; i < tiles.size(); i++) {
-      cppless::dispatch(
-          instance, t, images[i], std::make_tuple(tiles[i], bvh_root));
+      cppless::dispatch(instance,
+                        t,
+                        images[i],
+                        {tiles[i], bvh_root},
+                        m_span_ref.create_child("lambda_invocation"));
     }
 
     for (int i = 0; i < images.size(); i++) {
@@ -212,8 +226,8 @@ void aws_lambda_renderer::start(scene sc,
     {
       std::scoped_lock lk(mut);
       finished = true;
+      cv.notify_one();
     }
-    cv.notify_one();
   };
   m_worker.emplace(start);
 }

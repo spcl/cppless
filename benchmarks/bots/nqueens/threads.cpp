@@ -24,18 +24,13 @@ auto nqueens(threads_args args) -> unsigned int
                    prefixes);
 
   std::vector<std::thread> threads;
-  std::atomic<unsigned int> res;
+  std::atomic<unsigned long> res;
 
   for (unsigned int i = 0; i < prefixes.size(); i += prefix_length) {
-    std::vector<unsigned int> prefix(prefixes.begin() + i,
-                                     prefixes.begin() + i + prefix_length);
-    threads.emplace_back(
-        [prefix, size, prefix_length, &res]
-        {
-          auto scratchpad = std::vector<unsigned char>(size);
-          std::copy(prefix.begin(), prefix.end(), scratchpad.begin());
-          res += nqueens_serial(prefix_length, scratchpad);
-        });
+    std::vector<unsigned char> prefix(prefixes.begin() + i,
+                                      prefixes.begin() + i + prefix_length);
+    threads.emplace_back([prefix, size, &res]() mutable
+                         { res += nqueens_serial_prefix(size, prefix); });
   }
 
   for (auto& t : threads) {

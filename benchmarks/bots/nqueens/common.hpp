@@ -7,8 +7,12 @@
 
 auto ok(unsigned int n, std::span<const unsigned char> solution) -> bool;
 
-auto nqueens_serial(unsigned int j, std::span<unsigned char> scratchpad)
-    -> unsigned int;
+auto nqueens_serial(unsigned char n,
+                    unsigned long min_diag,
+                    unsigned long maj_diag,
+                    unsigned long vertical) -> unsigned long;
+
+auto nqueens_serial_prefix(unsigned char n, std::span<unsigned char> prefix) -> unsigned long;
 
 auto nqueens_prefixes(unsigned int start,
                       unsigned int end,

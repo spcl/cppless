@@ -41,7 +41,6 @@ constexpr auto dmax = 64;
 using coord = std::array<int, 2>;
 using board_array = std::array<std::array<char, rows>, cols>;
 
-constexpr auto cell_alignment = 64;
 class cell
 {
 public:
@@ -59,7 +58,7 @@ public:
   {
     ar(alt, top, bot, lhs, rhs, left, above, next);
   }
-} __attribute__((aligned(cell_alignment)));
+};
 
 class floorplan_data
 {

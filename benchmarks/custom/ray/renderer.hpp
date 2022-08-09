@@ -90,7 +90,12 @@ using task =
 class aws_lambda_renderer : public renderer
 {
 public:
-  aws_lambda_renderer() = default;
+  aws_lambda_renderer(unsigned int tile_width,
+                      unsigned int tile_height,
+                      cppless::tracing_span_ref span_ref)
+      : m_tile_width(tile_width)
+      , m_tile_height(tile_height)
+      , m_span_ref(span_ref) {};
   void start(scene sc,
              image& target,
              std::mutex& mut,
@@ -101,5 +106,8 @@ public:
   void join() override;
 
 private:
+  unsigned int m_tile_width;
+  unsigned int m_tile_height;
+  cppless::tracing_span_ref m_span_ref;
   std::optional<std::thread> m_worker;
 };
