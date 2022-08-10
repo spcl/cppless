@@ -3,6 +3,7 @@
 #include "./common.hpp"
 #include "./dispatcher.hpp"
 #include "./serial.hpp"
+#include "threads.hpp"
 
 __attribute((weak)) auto main(int argc, char* argv[]) -> int
 {
@@ -14,6 +15,14 @@ __attribute((weak)) auto main(int argc, char* argv[]) -> int
       .implicit_value(true);
   program.add_argument("--dispatcher-prefix-length")
       .help("Split value when using the dispatcher implementation")
+      .default_value(2)
+      .scan<'i', int>();
+  program.add_argument("--threads")
+      .help("Use threads")
+      .default_value(false)
+      .implicit_value(true);
+  program.add_argument("--threads-prefix-length")
+      .help("Split value when using the threads implementation")
       .default_value(2)
       .scan<'i', int>();
   program.add_argument("--serial")
@@ -46,6 +55,13 @@ __attribute((weak)) auto main(int argc, char* argv[]) -> int
         .items = items,
         .capacity = capacity,
         .split = static_cast<int>(items.size() - prefix_length)});
+    std::cout << res << std::endl;
+  } else if (program["--threads"] == true) {
+    auto prefix_length = program.get<int>("--threads-prefix-length");
+    int res = knapsack(
+        threads_args {.items = items,
+                      .capacity = capacity,
+                      .split = static_cast<int>(items.size() - prefix_length)});
     std::cout << res << std::endl;
   }
 
