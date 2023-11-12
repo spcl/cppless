@@ -2,7 +2,7 @@
 
 Cppless is a single-source programming model for high-performance serverless. It enables you to write applications that offload work to serverless services, without the need to write the glue code needed to connect them.
 
-The architecture of the compiler, including benchmark evaluation, details can be found in the thesis [Cppless: A single-source programming model for high-performance serverless]([https://doi.org/10.3929/ethz-b-000532425](https://mcopik.github.io/assets/pdf/students/2022_cppless_moeller.pdf).
+The architecture of the compiler, including benchmark evaluation, details can be found in the thesis [Cppless: A single-source programming model for high-performance serverless](https://mcopik.github.io/assets/pdf/students/2022_cppless_moeller.pdf).
 
 ## Building and installing
 
