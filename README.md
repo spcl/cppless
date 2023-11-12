@@ -1,10 +1,12 @@
-# cppless
+# Cppless
 
-Cppless is a single source programming model for high performance serverless. It enables you to write applications which offload work to serverless services, without the need to write the glue code needed to connect them.
+Cppless is a single-source programming model for high-performance serverless. It enables you to write applications that offload work to serverless services, without the need to write the glue code needed to connect them.
 
-# Building and installing
+The architecture of the compiler, including benchmark evaluation, details can be found in the thesis [Cppless: A single-source programming model for high-performance serverless]([https://doi.org/10.3929/ethz-b-000532425](https://mcopik.github.io/assets/pdf/students/2022_cppless_moeller.pdf).
 
-Building application that use cppless requires using a custom fork of the clang compiler. The modified version of the llvm-project is included as a submodule in the repository, it can be built by following these steps:
+## Building and installing
+
+Building applications that use cppless requires using a custom fork of the clang compiler. The modified version of the llvm-project is included as a submodule in the repository, it can be built by following these steps:
 - fetch the submodule
   - `git submodule update --init --recursive` (this will fetch only the latest revision, but will sped up the download)
   - Shallow clones cannot be used for contributing, you'll need to unshallow the clone in order to be able to commit changes to the submodule.
@@ -18,30 +20,15 @@ The cmake configuration of this project will automatically use the `clang` execu
 
 See the [BUILDING](BUILDING.md) document.
 
+## Benchmarks
+
+Implementations:
+- Fib
+- Floorplan
+- Knapsack
+- NQueens
+- Raycasting
+
 # Contributing
 
 See the [CONTRIBUTING](CONTRIBUTING.md) document.
-
-# Benchmarks
-
-Implementations
-
-- fft - (partially implemented, probably doesn't make sense)
-- sort - (partially implemented, probably doesn't make sense)
-
-- fib - (slow)
-- floorplan - implemented
-- knapsack - implemented
-
-- nqueens - implemented
-- ray-casting - implemented
-
-Ideas
-- Mandelbrot?
-- k-means
-- jacobi iteration (s3)
-- nbody (complex?)
-
-- hole punching
-
-# Licensing
