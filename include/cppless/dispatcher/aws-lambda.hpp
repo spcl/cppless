@@ -12,6 +12,7 @@
 #include <boost/algorithm/hex.hpp>
 #include <cereal/archives/json.hpp>
 #include <cereal/cereal.hpp>
+#include <cereal/types/string.hpp>
 #include <cereal/types/tuple.hpp>
 #include <cppless/dispatcher/common.hpp>
 #include <cppless/dispatcher/sendable.hpp>
@@ -255,14 +256,15 @@ public:
       req->submit(session, m_lambda_client, m_key, span);
     };
 
-
     auto cb = [this, id, &result_target, span](
                   const cppless::aws::lambda::invocation_response& res) mutable
     {
       scoped_tracing_span deserialization_span(span, "deserialization");
-      ResponseArchive::deserialize(res.body, result_target);
 
-      m_finished.insert(id);
+      std::tuple<typename TaskType::res&, std::string> result = std::make_tuple(result_target, "");
+      ResponseArchive::deserialize(res.body, result);
+
+      m_finished[id] = std::get<1>(result);
       m_completed++;
     };
 
@@ -287,14 +289,15 @@ public:
     return id;
   }
 
-  auto wait_one() -> int
+  auto wait_one() -> std::tuple<int, std::string>
   {
     while (m_finished.empty()) {
       m_io_service.run_one();
     }
-    auto it = *m_finished.begin();
+    auto it = m_finished.begin();
+    auto ret = *it;
     m_finished.erase(it);
-    return it;
+    return ret;
   }
 
 private:
@@ -307,7 +310,7 @@ private:
   std::vector<std::unique_ptr<cppless::aws::lambda::nghttp2_invocation_request>>
       m_requests;
   std::vector<std::optional<tracing_span_ref>> m_spans;
-  std::unordered_set<int> m_finished;
+  std::unordered_map<int, std::string> m_finished;
 
   std::vector<int> m_retry_queue;
   int m_started = 0;
@@ -397,23 +400,25 @@ public:
         {
           scoped_tracing_span deserialization_span(span, "deserialization");
 
-          ResponseArchive::deserialize(res.body, result_target);
+          std::tuple<typename Task::res&, std::string> result{result_target, ""};
+          ResponseArchive::deserialize(res.body, result);
 
-          m_finished.insert(id);
+          m_finished[id] = std::get<1>(result);
         });
     req->submit(m_resolver, m_ioc, m_tls, m_lambda_client, m_key, span);
 
     return id;
   }
 
-  auto wait_one() -> int
+  auto wait_one() -> std::tuple<int, std::string>
   {
     while (m_finished.empty()) {
       m_ioc.run_one();
     }
-    auto it = *m_finished.begin();
+    auto it = m_finished.begin();
+    auto ret = *it;
     m_finished.erase(it);
-    return it;
+    return ret;
   }
 
 private:
@@ -425,7 +430,7 @@ private:
 
   std::vector<std::shared_ptr<cppless::aws::lambda::beast_invocation_request>>
       m_requests;
-  std::unordered_set<int> m_finished;
+  std::unordered_map<int, std::string> m_finished;
 
   int m_next_id = 0;
 
@@ -493,9 +498,14 @@ public:
           // `m_self` and the arguments into `s_args`.
           task_data<Receivable, Args...> t_data {u.m_self, s_args};
           RequestArchive::deserialize(request.payload, t_data);
-          Res res = std::apply(u.m_self, s_args);
 
-          return invocation_response::success(ResponseArchive::serialize(res),
+          std::tuple<Res, std::string> res;
+          std::get<0>(res) = std::apply(u.m_self, s_args);
+          std::get<1>(res) = request.request_id;
+
+          auto serialized_res = ResponseArchive::serialize(res);
+          // serialized_res.
+          return invocation_response::success(serialized_res,
                                               "application/json");
         });
     return 0;

@@ -220,12 +220,12 @@ auto execute(const std::string& path, In input, Callback callback)
 
     InputArchive iar(child_to_parent_stream);
     //  Out result;
-    Out result;
+    std::tuple<Out, std::string> result;
     iar(result);
     // Close
 
     close(parent_read_fd);
-    callback(result);
+    callback(std::get<0>(result), std::get<1>(result));
   };
   std::thread t(wait_for_result);
   // return thread and future
