@@ -28,10 +28,10 @@ __attribute((weak)) auto main(int argc, char* argv[]) -> int
     cppless::dispatch(instance, t0, t0_result, {});
     cppless::dispatch(instance, t1, t1_result, {});
 
-    int x = instance.wait_one();
-    std::cout << "x = " << x << std::endl;
-    int y = instance.wait_one();
-    std::cout << "y = " << y << std::endl;
+    auto x = instance.wait_one();
+    std::cout << "x = " << std::get<0>(x) << " " << std::get<1>(x) << std::endl;
+    auto y = instance.wait_one();
+    std::cout << "y = " << std::get<0>(y) << " " << std::get<1>(y) << std::endl;
 
     std::cout << t0_result << std::endl;
     std::cout << t1_result << std::endl;

@@ -12,7 +12,11 @@
 #include <string>
 #include <tuple>
 
+#include <boost/uuid/uuid.hpp>
+#include <boost/uuid/uuid_generators.hpp>
+#include <boost/uuid/uuid_io.hpp>
 #include <cereal/cereal.hpp>
+#include <cereal/types/string.hpp>
 #include <cereal/types/tuple.hpp>
 #include <cppless/detail/deduction.hpp>
 #include <cppless/dispatcher/common.hpp>
@@ -146,7 +150,11 @@ public:
     task_data<Receivable, Args...> t_data {u.m_self, s_args};
     iar(t_data);
 
-    Res res = std::apply(u.m_self, s_args);
+    std::tuple<Res, std::string> res;
+    std::get<0>(res) = std::apply(u.m_self, s_args);
+    std::get<1>(res) = boost::uuids::to_string(
+      boost::uuids::random_generator()()
+    );
     {
       response_output_archive oar(std::cout);
       oar(res);
@@ -224,11 +232,12 @@ public:
       task_data data {t, args};
       std::string location = m_dispatcher.m_function_map[function_name];
       int id = m_next_id++;
-      auto cb = [this, &result_target, id](const typename TaskType::res& result)
+      auto cb = [this, &result_target, id](const typename TaskType::res& result,
+                                           const std::string& request_id)
       {
         std::lock_guard<std::mutex> lock(m_mutex);
         result_target = result;
-        m_finished.push_back(id);
+        m_finished.push_back(std::make_tuple(id, request_id));
         m_cv.notify_one();
       };
 
@@ -251,16 +260,16 @@ public:
      * `future` is returned exactly once by the `wait_one()` method.
      * @return int - The `id` of the finished task.
      */
-    auto wait_one() -> int
+    auto wait_one() -> std::tuple<int, std::string>
     {
       std::unique_lock lock(m_mutex);
       if (!m_finished.empty()) {
-        int finished = m_finished.back();
+        auto finished = m_finished.back();
         m_finished.pop_back();
         return finished;
       }
       m_cv.wait(lock, [this] { return !m_finished.empty(); });
-      int finished = m_finished.back();
+      auto finished = m_finished.back();
       m_finished.pop_back();
       return finished;
     }
@@ -279,7 +288,7 @@ public:
      * The ids of task invocations which finished. `m_cv` should be
      * notified when changes were made. A lock on `m_mutex` is required.
      */
-    std::vector<int> m_finished;
+    std::vector<std::tuple<int, std::string>> m_finished;
     /**
      * List of threads spawned by this instance. The destructor will ensure that
      * all threads are joined when the instance goes out of scope.
@@ -297,10 +306,7 @@ public:
    *
    * @return A fresh instance
    */
-  auto create_instance() -> instance
-  {
-    return instance(*this);
-  }
+  auto create_instance() -> instance { return instance(*this); }
 
 private:
   std::string m_base_path;
