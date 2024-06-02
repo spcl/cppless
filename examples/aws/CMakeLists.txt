@@ -11,6 +11,10 @@ add_executable(host_controller_executor_aws "host_controller_executor.cpp")
 aws_lambda_target(host_controller_executor_aws)
 aws_lambda_serverless_target(host_controller_executor_aws)
 
+add_executable(simple_dispatcher_aws "simple_dispatcher.cpp")
+aws_lambda_target(simple_dispatcher_aws)
+aws_lambda_serverless_target(simple_dispatcher_aws)
+
 add_executable(dispatcher_aws "dispatcher.cpp")
 aws_lambda_target(dispatcher_aws)
 aws_lambda_serverless_target(dispatcher_aws)
