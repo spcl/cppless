@@ -24,12 +24,13 @@ __attribute((weak)) auto main(int argc, char* argv[]) -> int
     auto t1 = [=]() { return 1 - a; };
     int t0_result, t1_result;
     cppless::dispatch(instance, t0, t0_result, {});
-    cppless::dispatch(instance, t1, t1_result, {});
 
     auto x = instance.wait_one();
-    std::cout << "x = " << std::get<0>(x) << " " << std::get<1>(x) << std::endl;
+    std::cout << "x = " << std::get<0>(x) << " " << std::get<1>(x).invocation_id << " is cold? " << std::get<1>(x).is_cold << std::endl;
+
+    cppless::dispatch(instance, t1, t1_result, {});
     auto y = instance.wait_one();
-    std::cout << "y = " << std::get<0>(y) << " " << std::get<1>(y) << std::endl;
+    std::cout << "y = " << std::get<0>(y) << " " << std::get<1>(y).invocation_id << " is cold? " << std::get<1>(y).is_cold << std::endl;
 
     std::cout << t0_result << std::endl;
     std::cout << t1_result << std::endl;
