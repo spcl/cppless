@@ -25,6 +25,8 @@
 #include <cppless/utils/uninitialized.hpp>
 #include <nlohmann/json.hpp>
 
+#include "common.hpp"
+
 #ifndef TARGET_NAME
 #  define TARGET_NAME "cppless"  // NOLINT
 #endif
@@ -261,7 +263,8 @@ public:
     {
       scoped_tracing_span deserialization_span(span, "deserialization");
 
-      std::tuple<typename TaskType::res&, std::string> result = std::make_tuple(result_target, "");
+      std::tuple<typename TaskType::res&, std::string> result =
+          std::make_tuple(result_target, "");
       ResponseArchive::deserialize(res.body, result);
 
       m_finished[id] = std::get<1>(result);
@@ -400,7 +403,8 @@ public:
         {
           scoped_tracing_span deserialization_span(span, "deserialization");
 
-          std::tuple<typename Task::res&, std::string> result{result_target, ""};
+          std::tuple<typename Task::res&, execution_statistics> result {
+              result_target, execution_statistics {"", false}};
           ResponseArchive::deserialize(res.body, result);
 
           m_finished[id] = std::get<1>(result);
@@ -410,7 +414,7 @@ public:
     return id;
   }
 
-  auto wait_one() -> std::tuple<int, std::string>
+  auto wait_one() -> std::tuple<int, execution_statistics>
   {
     while (m_finished.empty()) {
       m_ioc.run_one();
@@ -430,7 +434,7 @@ private:
 
   std::vector<std::shared_ptr<cppless::aws::lambda::beast_invocation_request>>
       m_requests;
-  std::unordered_map<int, std::string> m_finished;
+  std::unordered_map<int, execution_statistics> m_finished;
 
   int m_next_id = 0;
 
@@ -484,12 +488,14 @@ public:
   template<class Receivable, class Res, class... Args>
   static auto main(int /*argc*/, char* /*argv*/[]) -> int
   {
+    bool is_cold = true;
+
     using invocation_response = ::aws::lambda_runtime::invocation_response;
     using invocation_request = ::aws::lambda_runtime::invocation_request;
 
     using uninitialized_recv = cppless::uninitialized_data<Receivable>;
     ::aws::lambda_runtime::run_handler(
-        [](invocation_request const& request)
+        [&is_cold](invocation_request const& request)
         {
           uninitialized_recv u;
           std::tuple<Args...> s_args;
@@ -499,9 +505,11 @@ public:
           task_data<Receivable, Args...> t_data {u.m_self, s_args};
           RequestArchive::deserialize(request.payload, t_data);
 
-          std::tuple<Res, std::string> res;
+          std::tuple<Res, execution_statistics> res;
           std::get<0>(res) = std::apply(u.m_self, s_args);
-          std::get<1>(res) = request.request_id;
+          std::get<1>(res) = {request.request_id, is_cold};
+          if (is_cold)
+            is_cold = false;
 
           auto serialized_res = ResponseArchive::serialize(res);
           // serialized_res.

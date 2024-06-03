@@ -30,6 +30,18 @@
 namespace cppless
 {
 
+struct execution_statistics
+{
+  std::string invocation_id;
+  bool is_cold;
+
+  template<class Archive>
+  void serialize(Archive & archive)
+  {
+    archive(invocation_id, is_cold); 
+  }
+};
+
 /**
  * @brief Represents a value which will be set in the future
  *
