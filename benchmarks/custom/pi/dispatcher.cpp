@@ -53,8 +53,8 @@ auto main(int argc, char* argv[]) -> int
 
   dispatcher aws;
   auto instance = aws.create_instance();
-  cppless::tracing_span_container spans;
-  auto root = spans.create_root("root");
+  //cppless::tracing_span_container spans;
+  //auto root = spans.create_root("root");
 
   std::vector<double> results(np);
   for (int i = 0; i < np; i++) {
@@ -62,16 +62,16 @@ auto main(int argc, char* argv[]) -> int
     cppless::dispatch(instance,
                       fn,
                       results[i],
-                      {n / np},
-                      root.create_child("lambda_invocation"));
+                      {n / np});
+                      //root.create_child("lambda_invocation"));
   }
   cppless::wait(instance, np);
 
   double pi = std::reduce(results.begin(), results.end(), 0.0) / np;
   std::cout << pi << std::endl;
-  if (!trace_location.empty()) {
-    std::ofstream trace_file(trace_location);
-    nlohmann::json j = spans;
-    trace_file << j.dump(2);
-  }
+  //if (!trace_location.empty()) {
+  //  std::ofstream trace_file(trace_location);
+  //  nlohmann::json j = spans;
+  //  trace_file << j.dump(2);
+  //}
 }
