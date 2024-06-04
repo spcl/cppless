@@ -263,8 +263,7 @@ public:
     {
       scoped_tracing_span deserialization_span(span, "deserialization");
 
-      std::tuple<typename TaskType::res&, std::string> result =
-          std::make_tuple(result_target, "");
+      std::tuple<typename TaskType::res&, execution_statistics> result{result_target, execution_statistics{"", false});
       ResponseArchive::deserialize(res.body, result);
 
       m_finished[id] = std::get<1>(result);
@@ -292,7 +291,7 @@ public:
     return id;
   }
 
-  auto wait_one() -> std::tuple<int, std::string>
+  auto wait_one() -> std::tuple<int, execution_statistics>
   {
     while (m_finished.empty()) {
       m_io_service.run_one();
@@ -313,7 +312,7 @@ private:
   std::vector<std::unique_ptr<cppless::aws::lambda::nghttp2_invocation_request>>
       m_requests;
   std::vector<std::optional<tracing_span_ref>> m_spans;
-  std::unordered_map<int, std::string> m_finished;
+  std::unordered_map<int, execution_statistics> m_finished;
 
   std::vector<int> m_retry_queue;
   int m_started = 0;
