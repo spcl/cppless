@@ -1,4 +1,4 @@
-#!/usr/bin/env python3.8
+#!/usr/bin/env python3
 import argparse
 import base64
 import hashlib
@@ -168,7 +168,8 @@ class NativeEnvironment:
     def get_libc_paths(self):
         paths: Set[PurePosixPath] = set()
         rpm = subprocess.run(
-            ["rpm", "--query", "--list", "glibc.x86_64"], capture_output=True
+            ["dpkg-query", "-L", "libc6"], capture_output=True
+            #["rpm", "--query", "--list", "glibc.x86_64"], capture_output=True
         )
         rpm_output = rpm.stdout
         for file in rpm_output.decode("utf-8").split("\n"):
@@ -461,33 +462,36 @@ def handle_entry_point(
             )
         )
 
-        if "create" in actions:
-            aws_lambda.create_function(
-                FunctionName=function_name,
-                Runtime="provided",
-                Role=function_role_arn,
-                Handler="bootstrap",
-                Code={"ZipFile": zip_bytes},
-                Timeout=timeout,
-                MemorySize=memory,
-                # EphemeralStorage={"Size": ephemeral_storage} aws_lambda.,
-            )
-        if "update-config" in actions:
-            aws_lambda.update_function_configuration(
-                FunctionName=function_name,
-                Timeout=timeout,
-                MemorySize=memory,
-                # EphemeralStorage={"Size": ephemeral_storage},
-            )
-        if "update-code" in actions:
-            aws_lambda.update_function_code(
-                FunctionName=function_name, ZipFile=zip_bytes
-            )
-        if "update-role" in actions:
-            aws_lambda.update_function_configuration(
-                FunctionName=function_name,
-                Role=function_role_arn,
-            )
+        try:
+            if "create" in actions:
+                aws_lambda.create_function(
+                    FunctionName=function_name,
+                    Runtime="provided.al2023",
+                    Role=function_role_arn,
+                    Handler="bootstrap",
+                    Code={"ZipFile": zip_bytes},
+                    Timeout=timeout,
+                    MemorySize=memory,
+                    # EphemeralStorage={"Size": ephemeral_storage} aws_lambda.,
+                )
+            if "update-config" in actions:
+                aws_lambda.update_function_configuration(
+                    FunctionName=function_name,
+                    Timeout=timeout,
+                    MemorySize=memory,
+                    # EphemeralStorage={"Size": ephemeral_storage},
+                )
+            if "update-code" in actions:
+                aws_lambda.update_function_code(
+                    FunctionName=function_name, ZipFile=zip_bytes
+                )
+            if "update-role" in actions:
+                aws_lambda.update_function_configuration(
+                    FunctionName=function_name,
+                    Role=function_role_arn,
+                )
+        except Exception as e:
+            print(e)
 
 
 json_path = input_path.with_suffix(".json")
