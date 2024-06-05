@@ -25,7 +25,7 @@
 #include <cppless/utils/uninitialized.hpp>
 #include <nlohmann/json.hpp>
 
-#include "common.hpp"
+//#include "common.hpp"
 
 #ifndef TARGET_NAME
 #  define TARGET_NAME "cppless"  // NOLINT
@@ -238,7 +238,7 @@ public:
       payload = RequestArchive::serialize(data);
     }
 
-    std::cout << "payload size: " << payload.size() << std::endl;
+    //std::cout << "payload size: " << payload.size() << std::endl;
 
     int id = m_started++;
     auto req =
@@ -263,7 +263,7 @@ public:
     {
       scoped_tracing_span deserialization_span(span, "deserialization");
 
-      std::tuple<typename TaskType::res&, execution_statistics> result{result_target, execution_statistics{"", false});
+      std::tuple<typename TaskType::res&, execution_statistics> result{result_target, execution_statistics{"", false}};
       ResponseArchive::deserialize(res.body, result);
 
       m_finished[id] = std::get<1>(result);
