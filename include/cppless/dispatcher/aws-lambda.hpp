@@ -496,6 +496,7 @@ public:
     ::aws::lambda_runtime::run_handler(
         [&is_cold](invocation_request const& request)
         {
+          auto start = std::chrono::high_resolution_clock::now();
           uninitialized_recv u;
           std::tuple<Args...> s_args;
           // task_data takes both of its constructor arguments by reference,
@@ -503,14 +504,24 @@ public:
           // `m_self` and the arguments into `s_args`.
           task_data<Receivable, Args...> t_data {u.m_self, s_args};
           RequestArchive::deserialize(request.payload, t_data);
+          auto end = std::chrono::high_resolution_clock::now();
 
+          auto start2 = std::chrono::high_resolution_clock::now();
           std::tuple<Res, execution_statistics> res;
           std::get<0>(res) = std::apply(u.m_self, s_args);
+          auto end2 = std::chrono::high_resolution_clock::now();
           std::get<1>(res) = {request.request_id, is_cold};
           if (is_cold)
             is_cold = false;
 
+          auto start3 = std::chrono::high_resolution_clock::now();
           auto serialized_res = ResponseArchive::serialize(res);
+          auto end3 = std::chrono::high_resolution_clock::now();
+
+          std::cerr << "TRACE deser " << std::chrono::duration_cast<std::chrono::microseconds>(end-start).count() << std::endl;
+          std::cerr << "TRACE compute " << std::chrono::duration_cast<std::chrono::microseconds>(end2-start2).count() << std::endl;
+          std::cerr << "TRACE ser " << std::chrono::duration_cast<std::chrono::microseconds>(end3-start3).count() << std::endl;
+
           // serialized_res.
           return invocation_response::success(serialized_res,
                                               "application/json");
