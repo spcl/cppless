@@ -174,6 +174,8 @@ void aws_lambda_renderer::start(scene sc,
 
   auto start = [sc, &target, &mut, &progress, &finished, &cv, tiles, this]()
   {
+
+    std::vector<std::tuple<int, int, uint64_t, std::string, bool>> time_results;
     dispatcher aws;
     auto instance = aws.create_instance();
     std::mt19937 generator(42);
@@ -204,24 +206,66 @@ void aws_lambda_renderer::start(scene sc,
       return tile_img;
     };
 
-    std::vector<image> images(tiles.size());
-    for (int i = 0; i < tiles.size(); i++) {
-      cppless::dispatch(instance,
-                        t,
-                        images[i],
-                        {tiles[i], bvh_root},
-                        m_span_ref.create_child("lambda_invocation"));
+    for(int rep = 0; rep < m_repetitions; ++rep) {
+
+      std::vector<image> images(tiles.size());
+      int start_position_vec = time_results.size();
+      int first_id = -1;
+
+      auto start = std::chrono::high_resolution_clock::now();
+      for (int i = 0; i < tiles.size(); i++) {
+        auto start_func = std::chrono::high_resolution_clock::now();
+        auto id = cppless::dispatch(instance,
+                          t,
+                          images[i],
+                          {tiles[i], bvh_root});
+                          //m_span_ref.create_child("lambda_invocation"));
+        if(first_id == -1)
+          first_id = id;
+        auto ts = std::chrono::time_point_cast<std::chrono::microseconds>(start_func).time_since_epoch().count();
+        time_results.emplace_back(rep, id, ts, "", false);
+      }
+
+      for (int i = 0; i < images.size(); i++) {
+
+        auto f = instance.wait_one();
+
+        auto end = std::chrono::high_resolution_clock::now(); 
+        auto ts = std::chrono::time_point_cast<std::chrono::microseconds>(end).time_since_epoch().count();
+        auto duration = std::chrono::duration_cast<std::chrono::microseconds>(end-start).count();
+
+        int idx = std::get<0>(f) - first_id;
+        {
+          std::scoped_lock lk(mut);
+          tile t = tiles[idx];
+          target.insert(t.x, t.y, images[idx]);
+          progress = static_cast<double>(i) / images.size();
+          //cv.notify_one();
+        }
+
+        int pos = std::get<0>(f);
+        int pos_shift = pos - first_id;
+        int pos_in_vector = start_position_vec + pos_shift;
+        std::get<2>(time_results[pos_in_vector]) = ts - std::get<2>(time_results[pos_in_vector]);
+        std::get<3>(time_results[pos_in_vector]) = std::get<1>(f).invocation_id;
+        std::get<4>(time_results[pos_in_vector]) = std::get<1>(f).is_cold;
+      }
+
+      auto end = std::chrono::high_resolution_clock::now();
+      auto duration = std::chrono::duration_cast<std::chrono::microseconds>(end-start).count();
+      time_results.emplace_back(rep, -1, duration, "total", false);
+
+      if(!m_img_location.empty()) {
+        std::ofstream file{m_img_location + "_" + std::to_string(rep), std::ios::out};
+        file << target;
+      }
     }
 
-    for (int i = 0; i < images.size(); i++) {
-      auto f = instance.wait_one();
-      {
-        std::scoped_lock lk(mut);
-        tile t = tiles[f];
-        target.insert(t.x, t.y, images[f]);
-        progress = static_cast<double>(i) / images.size();
-        cv.notify_one();
-      }
+    {
+      std::ofstream output_file{m_output_location, std::ios::out};
+      output_file << "repetition,sample,time,request_id,is_cold" << std::endl;
+      for(auto & res : time_results)
+        output_file << std::get<0>(res) << "," << std::get<1>(res) << "," << std::get<2>(res) << "," << std::get<3>(res) << "," << std::get<4>(res) << std::endl;
     }
     {
       std::scoped_lock lk(mut);

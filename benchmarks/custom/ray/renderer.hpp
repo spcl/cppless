@@ -92,22 +92,35 @@ class aws_lambda_renderer : public renderer
 public:
   aws_lambda_renderer(unsigned int tile_width,
                       unsigned int tile_height,
-                      cppless::tracing_span_ref span_ref)
-      : m_tile_width(tile_width)
-      , m_tile_height(tile_height)
-      , m_span_ref(span_ref) {};
+                      int repetitions,
+                      std::string output_location,
+                      std::string img_location)
+                      //cppless::tracing_span_ref span_ref)
+      : m_tile_width(tile_width),
+        m_tile_height(tile_height),
+        m_repetitions(repetitions),
+        m_output_location(output_location),
+        m_img_location(img_location)
+      {};
+      //, m_span_ref(span_ref) {};
   void start(scene sc,
              image& target,
              std::mutex& mut,
              double& progress,
              bool& finished,
-             std::condition_variable& cv) override;
+             std::condition_variable& cv
+  ) override;
 
   void join() override;
 
 private:
+
+  int m_repetitions;
+  std::string m_output_location;
+  std::string m_img_location;
+
   unsigned int m_tile_width;
   unsigned int m_tile_height;
-  cppless::tracing_span_ref m_span_ref;
+  //cppless::tracing_span_ref m_span_ref;
   std::optional<std::thread> m_worker;
 };
