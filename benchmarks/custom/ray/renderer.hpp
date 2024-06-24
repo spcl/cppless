@@ -58,8 +58,13 @@ private:
 class multi_threaded_renderer : public renderer
 {
 public:
-  explicit multi_threaded_renderer(int num_workers)
-      : m_num_workers(num_workers)
+  explicit multi_threaded_renderer(
+                      int num_workers,
+                      unsigned int tile_width,
+                      unsigned int tile_height
+  ): m_num_workers(num_workers),
+     m_tile_width(tile_width),
+     m_tile_height(tile_height)
   {
   }
   void start(scene sc,
@@ -73,6 +78,8 @@ public:
 private:
   int m_num_workers;
   bvh_node m_bvh_root;
+  unsigned int m_tile_width;
+  unsigned int m_tile_height;
   std::vector<std::thread> m_workers;
   std::atomic<unsigned long> m_tile_index = 0;
   int m_finished_tiles = 0;
