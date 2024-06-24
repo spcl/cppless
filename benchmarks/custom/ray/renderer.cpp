@@ -94,9 +94,6 @@ void single_threaded_renderer::join()
   m_worker->join();
 }
 
-constexpr int mt_tile_width = 128;
-constexpr int mt_tile_height = 128;
-
 void multi_threaded_renderer::start(scene sc,
                                     image& target,
                                     std::mutex& mut,
@@ -109,7 +106,7 @@ void multi_threaded_renderer::start(scene sc,
   m_bvh_root = bvh_node(sc.world, generator);
 
   m_tiles = quantize_image(
-      target.width(), target.height(), mt_tile_width, mt_tile_height);
+      target.width(), target.height(), m_tile_width, m_tile_height);
   std::cerr << "number_of_tiles: " << m_tiles.size() << std::endl;
 
   m_workers.reserve(m_num_workers);
@@ -168,45 +165,50 @@ void aws_lambda_renderer::start(scene sc,
                                 bool& finished,
                                 std::condition_variable& cv)
 {
-  auto tiles = quantize_image(
-      target.width(), target.height(), m_tile_width, m_tile_height);
-  std::cerr << "number_of_tiles: " << tiles.size() << std::endl;
 
-  auto start = [sc, &target, &mut, &progress, &finished, &cv, tiles, this]()
+  auto start = [sc, &target, &mut, &progress, &finished, &cv, this]()
   {
 
     std::vector<std::tuple<int, int, uint64_t, std::string, bool>> time_results;
     dispatcher aws;
     auto instance = aws.create_instance();
-    std::mt19937 generator(42);
-    auto bvh_root = bvh_node(sc.world, generator);
-
-    camera cam = sc.cam;
-    unsigned int width = target.width();
-    unsigned int height = target.height();
-    int samples_per_pixel = sc.samples_per_pixel;
-    int max_depth = sc.max_depth;
-    auto t = [cam, width, height, samples_per_pixel, max_depth](tile t,
-                                                                bvh_node world)
-    {
-      std::mt19937 generator(42);
-      std::uniform_real_distribution<double> distribution(0.0, 1.0);
-      image tile_img(t.width, t.height, samples_per_pixel);
-      for (int x = t.x; x < t.width + t.x; x++) {
-        for (int y = t.y; y < t.height + t.y; y++) {
-          for (int s = 0; s < samples_per_pixel; ++s) {
-            auto u = (x + distribution(generator)) / (width - 1);
-            auto v = (y + distribution(generator)) / (height - 1);
-            ray r = cam.get_ray(u, v, generator);
-            tile_img(x - t.x, y - t.y) +=
-                ray_color(r, world, max_depth, generator);
-          }
-        }
-      }
-      return tile_img;
-    };
 
     for(int rep = 0; rep < m_repetitions; ++rep) {
+
+      auto tile_start = std::chrono::high_resolution_clock::now();
+      auto tiles = quantize_image(
+          target.width(), target.height(), m_tile_width, m_tile_height);
+      auto tile_end = std::chrono::high_resolution_clock::now();
+
+      auto bhv_start = std::chrono::high_resolution_clock::now();
+      std::mt19937 generator(42);
+      auto bvh_root = bvh_node(sc.world, generator);
+      auto bhv_end = std::chrono::high_resolution_clock::now();
+
+      camera cam = sc.cam;
+      unsigned int width = target.width();
+      unsigned int height = target.height();
+      int samples_per_pixel = sc.samples_per_pixel;
+      int max_depth = sc.max_depth;
+      auto t = [cam, width, height, samples_per_pixel, max_depth](tile t,
+                                                                  bvh_node world)
+      {
+        std::mt19937 generator(42);
+        std::uniform_real_distribution<double> distribution(0.0, 1.0);
+        image tile_img(t.width, t.height, samples_per_pixel);
+        for (int x = t.x; x < t.width + t.x; x++) {
+          for (int y = t.y; y < t.height + t.y; y++) {
+            for (int s = 0; s < samples_per_pixel; ++s) {
+              auto u = (x + distribution(generator)) / (width - 1);
+              auto v = (y + distribution(generator)) / (height - 1);
+              ray r = cam.get_ray(u, v, generator);
+              tile_img(x - t.x, y - t.y) +=
+                  ray_color(r, world, max_depth, generator);
+            }
+          }
+        }
+        return tile_img;
+      };
 
       std::vector<image> images(tiles.size());
       int start_position_vec = time_results.size();
@@ -255,10 +257,22 @@ void aws_lambda_renderer::start(scene sc,
       auto duration = std::chrono::duration_cast<std::chrono::microseconds>(end-start).count();
       time_results.emplace_back(rep, -1, duration, "total", false);
 
+      {
+        auto duration = std::chrono::duration_cast<std::chrono::microseconds>(bhv_end-bhv_start).count();
+        time_results.emplace_back(rep, -1, duration, "bhv", false);
+      }
+      {
+        auto duration = std::chrono::duration_cast<std::chrono::microseconds>(tile_end-tile_start).count();
+        time_results.emplace_back(rep, -1, duration, "tile", false);
+      }
+
       if(!m_img_location.empty()) {
         std::ofstream file{m_img_location + "_" + std::to_string(rep), std::ios::out};
         file << target;
       }
+
+      if(rep == 0)
+        std::clog << "number_of_tiles: " << tiles.size() << std::endl;
     }
 
     {
