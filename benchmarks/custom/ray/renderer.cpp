@@ -227,6 +227,7 @@ void aws_lambda_renderer::start(scene sc,
         auto ts = std::chrono::time_point_cast<std::chrono::microseconds>(start_func).time_since_epoch().count();
         time_results.emplace_back(rep, id, ts, "", false);
       }
+      auto dispatch_end = std::chrono::high_resolution_clock::now();
 
       for (int i = 0; i < images.size(); i++) {
 
@@ -255,15 +256,27 @@ void aws_lambda_renderer::start(scene sc,
 
       auto end = std::chrono::high_resolution_clock::now();
       auto duration = std::chrono::duration_cast<std::chrono::microseconds>(end-start).count();
-      time_results.emplace_back(rep, -1, duration, "total", false);
+      time_results.emplace_back(rep, -1, duration, "compute_total", false);
 
+      {
+        auto duration = std::chrono::duration_cast<std::chrono::microseconds>(end-tile_start).count();
+        time_results.emplace_back(rep, -1, duration, "total", false);
+      }
       {
         auto duration = std::chrono::duration_cast<std::chrono::microseconds>(bhv_end-bhv_start).count();
         time_results.emplace_back(rep, -1, duration, "bhv", false);
       }
       {
-        auto duration = std::chrono::duration_cast<std::chrono::microseconds>(tile_end-tile_start).count();
+        auto duration = std::chrono::duration_cast<std::chrono::nanoseconds>(tile_end-tile_start).count();
         time_results.emplace_back(rep, -1, duration, "tile", false);
+      }
+      {
+        auto duration = std::chrono::duration_cast<std::chrono::microseconds>(dispatch_end-tile_start).count();
+        time_results.emplace_back(rep, -1, duration, "dispatch_from_start", false);
+      }
+      {
+        auto duration = std::chrono::duration_cast<std::chrono::microseconds>(dispatch_end-start).count();
+        time_results.emplace_back(rep, -1, duration, "dispatch", false);
       }
 
       if(!m_img_location.empty()) {
