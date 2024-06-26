@@ -82,10 +82,10 @@ struct with_ephemeral_storage
 };
 
 template<unsigned int Timeout>
-class with_timeout
+struct with_timeout
 {
   template<class Base>
-  class apply : public Base
+  struct apply : public Base
   {
     constexpr static unsigned int timeout = Timeout;
   };
