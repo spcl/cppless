@@ -41,6 +41,15 @@ public:
 class single_threaded_renderer : public renderer
 {
 public:
+  explicit single_threaded_renderer(
+                      int repetitions,
+                      std::string output_location,
+                      std::string img_location
+  ): m_repetitions(repetitions),
+     m_output_location(output_location),
+     m_img_location(img_location)
+  {}
+
   void start(scene sc,
              image& target,
              std::mutex& mut,
@@ -51,8 +60,11 @@ public:
   ~single_threaded_renderer() override = default;
 
 private:
-  bvh_node m_bvh_root;
-  std::optional<std::thread> m_worker;
+  //bvh_node m_bvh_root;
+  //std::optional<std::thread> m_worker;
+  int m_repetitions;
+  std::string m_output_location;
+  std::string m_img_location;
 };
 
 class multi_threaded_renderer : public renderer
@@ -61,10 +73,16 @@ public:
   explicit multi_threaded_renderer(
                       int num_workers,
                       unsigned int tile_width,
-                      unsigned int tile_height
+                      unsigned int tile_height,
+                      int repetitions,
+                      std::string output_location,
+                      std::string img_location
   ): m_num_workers(num_workers),
      m_tile_width(tile_width),
-     m_tile_height(tile_height)
+     m_tile_height(tile_height),
+    m_repetitions(repetitions),
+    m_output_location(output_location),
+    m_img_location(img_location)
   {
   }
   void start(scene sc,
@@ -76,8 +94,11 @@ public:
   void join() override;
 
 private:
+  int m_repetitions;
+  std::string m_output_location;
+  std::string m_img_location;
   int m_num_workers;
-  bvh_node m_bvh_root;
+  //bvh_node m_bvh_root;
   unsigned int m_tile_width;
   unsigned int m_tile_height;
   std::vector<std::thread> m_workers;

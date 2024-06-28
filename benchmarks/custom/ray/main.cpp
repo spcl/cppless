@@ -4,9 +4,9 @@
 #include <iomanip>
 #include <iostream>
 #include <memory>
-#include <mutex>
+
 #include <random>
-#include <string>
+
 #include <thread>
 
 #include <argparse/argparse.hpp>
@@ -139,8 +139,6 @@ __attribute((weak)) int main(int argc, char* argv[])
   int repetitions = program.get<int>("-r");
   std::string output_location = program.get<std::string>("-o");
   auto img_location = program.get<std::string>("--path");
-  auto tile_width = program.get<unsigned int>("--dispatcher-tile-width");
-  auto tile_height = program.get<unsigned int>("--dispatcher-tile-height");
 
   // World
   std::mt19937 generator(42);
@@ -169,11 +167,15 @@ __attribute((weak)) int main(int argc, char* argv[])
   //cppless::tracing_span_container spans;
   //auto root = spans.create_root("root").start();
   if (program["--dispatcher"] == true) {
+    auto tile_width = program.get<unsigned int>("--dispatcher-tile-width");
+    auto tile_height = program.get<unsigned int>("--dispatcher-tile-height");
     r = std::make_unique<aws_lambda_renderer>(tile_width, tile_height, repetitions, output_location, img_location);
   } else if (program["--serial"] == true) {
-    r = std::make_unique<single_threaded_renderer>();
+    r = std::make_unique<single_threaded_renderer>(repetitions, output_location, img_location);
   } else if (program["--threads"] != -1) {
-    r = std::make_unique<multi_threaded_renderer>(program.get<int>("--threads"), tile_width, tile_height);
+    auto tile_width = program.get<unsigned int>("--dispatcher-tile-width");
+    auto tile_height = program.get<unsigned int>("--dispatcher-tile-height");
+    r = std::make_unique<multi_threaded_renderer>(program.get<int>("--threads"), tile_width, tile_height, repetitions, output_location, img_location);
   }
   auto start = std::chrono::high_resolution_clock::now();
   r->start(

@@ -15,6 +15,8 @@
 #include "tile.hpp"
 #include "vec.hpp"
 
+#include "../../include/measurement.hpp"
+
 static auto ray_color(const ray& r,
                       const hittable& world,
                       int depth,
@@ -51,11 +53,18 @@ void single_threaded_renderer::start(scene sc,
                                      bool& finished,
                                      std::condition_variable& cv)
 {
-  std::mt19937 generator(42);
-  m_bvh_root = bvh_node(sc.world, generator);
-  auto fn = [this, &target, &mut, &progress, &finished, &cv, sc]()
-  {
+  measurements benchmarker;
+
+  for(int rep = 0; rep < m_repetitions; ++rep) {
+
+    target.clean();
+
+    benchmarker.start_repetition(rep);
+    auto start = std::chrono::high_resolution_clock::now();
+
     std::mt19937 generator(42);
+    bvh_node m_bvh_root = bvh_node(sc.world, generator);
+
     std::uniform_real_distribution<double> distribution(0.0, 1.0);
     for (int y = 0; y < target.height(); y++) {
       for (int x = 0; x < target.width(); x++) {
@@ -68,30 +77,28 @@ void single_threaded_renderer::start(scene sc,
         }
 
         {
-          std::scoped_lock lk(mut);
           target(x, y) = c;
         }
       }
-
-      {
-        std::scoped_lock lk(mut);
-        progress = static_cast<double>(y) / target.height();
-        cv.notify_one();
-      }
     }
-    {
-      std::scoped_lock lk(mut);
-      finished = true;
-      cv.notify_one();
-    }
-  };
 
-  m_worker.emplace(fn);
+    auto end = std::chrono::high_resolution_clock::now();
+
+    benchmarker.add_result(start, end, "total");
+
+    if(!m_img_location.empty()) {
+      std::ofstream file{m_img_location + "_" + std::to_string(rep), std::ios::out};
+      file << target;
+    }
+
+  }
+
+  benchmarker.write(m_output_location);
 }
 
 void single_threaded_renderer::join()
 {
-  m_worker->join();
+  //m_worker->join();
 }
 
 void multi_threaded_renderer::start(scene sc,
@@ -101,61 +108,88 @@ void multi_threaded_renderer::start(scene sc,
                                     bool& finished,
                                     std::condition_variable& cv)
 {
-  std::mt19937 generator(42);
-
-  m_bvh_root = bvh_node(sc.world, generator);
-
-  m_tiles = quantize_image(
-      target.width(), target.height(), m_tile_width, m_tile_height);
-  std::cerr << "number_of_tiles: " << m_tiles.size() << std::endl;
-
+  measurements benchmarker;
   m_workers.reserve(m_num_workers);
-  for (int i = 0; i < m_num_workers; i++) {
-    auto worker_fn = [this, &target, &progress, &finished, &cv, &mut, sc]()
-    {
-      std::mt19937 generator(42);  // NOLINT
-      std::uniform_real_distribution<double> distribution(0.0, 1.0);
-      double width = static_cast<double>(target.width()) - 1;
-      double height = static_cast<double>(target.height()) - 1;
 
-      unsigned long current_tile_index = m_tile_index++;
-      while (current_tile_index < m_tiles.size()) {
-        tile current_tile = m_tiles[current_tile_index];
+  for(int rep = 0; rep < m_repetitions; ++rep) {
 
-        for (int x = current_tile.x; x < current_tile.width + current_tile.x;
-             x++) {
-          for (int y = current_tile.y; y < current_tile.height + current_tile.y;
-               y++) {
-            for (int s = 0; s < sc.samples_per_pixel; s++) {
-              auto u = (x + distribution(generator)) / width;
-              auto v = (y + distribution(generator)) / height;
-              ray r = sc.cam.get_ray(u, v, generator);
-              target(x, y) += ray_color(r, m_bvh_root, sc.max_depth, generator);
+    target.clean();
+    m_workers.clear();
+    m_tile_index = 0;
+    m_finished_tiles = 0;
+
+    benchmarker.start_repetition(rep);
+    auto start = std::chrono::high_resolution_clock::now();
+
+    std::mt19937 generator(42);
+
+    bvh_node m_bvh_root = bvh_node(sc.world, generator);
+
+    m_tiles = quantize_image(
+        target.width(), target.height(), m_tile_width, m_tile_height);
+    std::cerr << "number_of_tiles: " << m_tiles.size() << std::endl;
+
+    for (int i = 0; i < m_num_workers; i++) {
+      auto worker_fn = [this, &m_bvh_root, &target, &progress, &finished, &cv, &mut, sc]()
+      {
+        std::mt19937 generator(42);  // NOLINT
+        std::uniform_real_distribution<double> distribution(0.0, 1.0);
+        double width = static_cast<double>(target.width()) - 1;
+        double height = static_cast<double>(target.height()) - 1;
+
+        unsigned long current_tile_index = m_tile_index++;
+        while (current_tile_index < m_tiles.size()) {
+          tile current_tile = m_tiles[current_tile_index];
+
+          for (int x = current_tile.x; x < current_tile.width + current_tile.x;
+               x++) {
+            for (int y = current_tile.y; y < current_tile.height + current_tile.y;
+                 y++) {
+              for (int s = 0; s < sc.samples_per_pixel; s++) {
+                auto u = (x + distribution(generator)) / width;
+                auto v = (y + distribution(generator)) / height;
+                ray r = sc.cam.get_ray(u, v, generator);
+                target(x, y) += ray_color(r, m_bvh_root, sc.max_depth, generator);
+              }
             }
           }
-        }
 
-        {
-          std::scoped_lock lk(mut);
-          m_finished_tiles++;
-          progress = static_cast<double>(m_finished_tiles)
-              / static_cast<double>(m_tiles.size());
-          finished = m_finished_tiles == m_tiles.size();
-          cv.notify_one();
-        }
+          {
+            std::scoped_lock lk(mut);
+            m_finished_tiles++;
+            progress = static_cast<double>(m_finished_tiles)
+                / static_cast<double>(m_tiles.size());
+            finished = m_finished_tiles == m_tiles.size();
+            cv.notify_one();
+          }
 
-        current_tile_index = m_tile_index++;
-      }
-    };
-    m_workers.emplace_back(worker_fn);
+          current_tile_index = m_tile_index++;
+        }
+      };
+      m_workers.emplace_back(worker_fn);
+    }
+
+    for (auto& thread : m_workers) {
+      thread.join();
+    }
+    auto end = std::chrono::high_resolution_clock::now();
+
+    benchmarker.add_result(start, end, "total");
+
+    if(!m_img_location.empty()) {
+      std::ofstream file{m_img_location + "_" + std::to_string(rep), std::ios::out};
+      file << target;
+    }
   }
+
+  benchmarker.write(m_output_location);
 }
 
 void multi_threaded_renderer::join()
 {
-  for (auto& thread : m_workers) {
-    thread.join();
-  }
+  //for (auto& thread : m_workers) {
+  //  thread.join();
+  //}
 }
 
 void aws_lambda_renderer::start(scene sc,
