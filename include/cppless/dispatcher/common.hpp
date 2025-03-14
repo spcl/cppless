@@ -30,6 +30,18 @@
 namespace cppless
 {
 
+struct execution_statistics
+{
+  std::string invocation_id;
+  bool is_cold;
+
+  template<class Archive>
+  void serialize(Archive & archive)
+  {
+    archive(invocation_id, is_cold); 
+  }
+};
+
 /**
  * @brief Represents a value which will be set in the future
  *
@@ -220,12 +232,12 @@ auto execute(const std::string& path, In input, Callback callback)
 
     InputArchive iar(child_to_parent_stream);
     //  Out result;
-    Out result;
+    std::tuple<Out, std::string> result;
     iar(result);
     // Close
 
     close(parent_read_fd);
-    callback(result);
+    callback(std::get<0>(result), std::get<1>(result));
   };
   std::thread t(wait_for_result);
   // return thread and future

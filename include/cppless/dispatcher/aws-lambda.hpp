@@ -12,6 +12,7 @@
 #include <boost/algorithm/hex.hpp>
 #include <cereal/archives/json.hpp>
 #include <cereal/cereal.hpp>
+#include <cereal/types/string.hpp>
 #include <cereal/types/tuple.hpp>
 #include <cppless/dispatcher/common.hpp>
 #include <cppless/dispatcher/sendable.hpp>
@@ -23,6 +24,8 @@
 #include <cppless/utils/tracing.hpp>
 #include <cppless/utils/uninitialized.hpp>
 #include <nlohmann/json.hpp>
+
+#include "common.hpp"
 
 #ifndef TARGET_NAME
 #  define TARGET_NAME "cppless"  // NOLINT
@@ -255,14 +258,15 @@ public:
       req->submit(session, m_lambda_client, m_key, span);
     };
 
-
     auto cb = [this, id, &result_target, span](
                   const cppless::aws::lambda::invocation_response& res) mutable
     {
       scoped_tracing_span deserialization_span(span, "deserialization");
-      ResponseArchive::deserialize(res.body, result_target);
 
-      m_finished.insert(id);
+      std::tuple<typename TaskType::res&, execution_statistics> result{result_target, execution_statistics{"", false});
+      ResponseArchive::deserialize(res.body, result);
+
+      m_finished[id] = std::get<1>(result);
       m_completed++;
     };
 
@@ -287,14 +291,15 @@ public:
     return id;
   }
 
-  auto wait_one() -> int
+  auto wait_one() -> std::tuple<int, execution_statistics>
   {
     while (m_finished.empty()) {
       m_io_service.run_one();
     }
-    auto it = *m_finished.begin();
+    auto it = m_finished.begin();
+    auto ret = *it;
     m_finished.erase(it);
-    return it;
+    return ret;
   }
 
 private:
@@ -307,7 +312,7 @@ private:
   std::vector<std::unique_ptr<cppless::aws::lambda::nghttp2_invocation_request>>
       m_requests;
   std::vector<std::optional<tracing_span_ref>> m_spans;
-  std::unordered_set<int> m_finished;
+  std::unordered_map<int, execution_statistics> m_finished;
 
   std::vector<int> m_retry_queue;
   int m_started = 0;
@@ -397,23 +402,26 @@ public:
         {
           scoped_tracing_span deserialization_span(span, "deserialization");
 
-          ResponseArchive::deserialize(res.body, result_target);
+          std::tuple<typename Task::res&, execution_statistics> result {
+              result_target, execution_statistics {"", false}};
+          ResponseArchive::deserialize(res.body, result);
 
-          m_finished.insert(id);
+          m_finished[id] = std::get<1>(result);
         });
     req->submit(m_resolver, m_ioc, m_tls, m_lambda_client, m_key, span);
 
     return id;
   }
 
-  auto wait_one() -> int
+  auto wait_one() -> std::tuple<int, execution_statistics>
   {
     while (m_finished.empty()) {
       m_ioc.run_one();
     }
-    auto it = *m_finished.begin();
+    auto it = m_finished.begin();
+    auto ret = *it;
     m_finished.erase(it);
-    return it;
+    return ret;
   }
 
 private:
@@ -425,7 +433,7 @@ private:
 
   std::vector<std::shared_ptr<cppless::aws::lambda::beast_invocation_request>>
       m_requests;
-  std::unordered_set<int> m_finished;
+  std::unordered_map<int, execution_statistics> m_finished;
 
   int m_next_id = 0;
 
@@ -479,12 +487,14 @@ public:
   template<class Receivable, class Res, class... Args>
   static auto main(int /*argc*/, char* /*argv*/[]) -> int
   {
+    bool is_cold = true;
+
     using invocation_response = ::aws::lambda_runtime::invocation_response;
     using invocation_request = ::aws::lambda_runtime::invocation_request;
 
     using uninitialized_recv = cppless::uninitialized_data<Receivable>;
     ::aws::lambda_runtime::run_handler(
-        [](invocation_request const& request)
+        [&is_cold](invocation_request const& request)
         {
           uninitialized_recv u;
           std::tuple<Args...> s_args;
@@ -493,9 +503,16 @@ public:
           // `m_self` and the arguments into `s_args`.
           task_data<Receivable, Args...> t_data {u.m_self, s_args};
           RequestArchive::deserialize(request.payload, t_data);
-          Res res = std::apply(u.m_self, s_args);
 
-          return invocation_response::success(ResponseArchive::serialize(res),
+          std::tuple<Res, execution_statistics> res;
+          std::get<0>(res) = std::apply(u.m_self, s_args);
+          std::get<1>(res) = {request.request_id, is_cold};
+          if (is_cold)
+            is_cold = false;
+
+          auto serialized_res = ResponseArchive::serialize(res);
+          // serialized_res.
+          return invocation_response::success(serialized_res,
                                               "application/json");
         });
     return 0;
