@@ -4,9 +4,9 @@
 #include <iomanip>
 #include <iostream>
 #include <memory>
-#include <mutex>
+
 #include <random>
-#include <string>
+
 #include <thread>
 
 #include <argparse/argparse.hpp>
@@ -105,8 +105,20 @@ __attribute((weak)) int main(int argc, char* argv[])
       .scan<'i', unsigned int>();
   program.add_argument("--dispatcher-trace-output")
       .default_value(std::string {""});
+  program.add_argument("--path")
+      .default_value(std::string {""});
   program.add_argument("--serial").default_value(false).implicit_value(true);
-  program.add_argument("--threads").default_value(false).implicit_value(true);
+  program.add_argument("--threads").default_value(-1).scan<'d', int>();
+  program.add_argument("-r")
+      .help("number of repetitions")
+      .default_value(1)
+      .scan<'i', int>();
+  program.add_argument("-o")
+      .default_value(std::string(""))
+      .help("location to write output statistics");
+  program.add_argument("-i")
+      .default_value(std::string(""))
+      .help("location to write output image");
 
   try {
     program.parse_args(argc, argv);
@@ -122,6 +134,11 @@ __attribute((weak)) int main(int argc, char* argv[])
   const int image_height = static_cast<int>(image_width / aspect_ratio);
   const int samples_per_pixel = program.get<int>("-s");
   const int max_depth = program.get<int>("-d");
+
+  // Dispatcher benchmarking
+  int repetitions = program.get<int>("-r");
+  std::string output_location = program.get<std::string>("-o");
+  auto img_location = program.get<std::string>("--path");
 
   // World
   std::mt19937 generator(42);
@@ -147,17 +164,20 @@ __attribute((weak)) int main(int argc, char* argv[])
   std::string arg(argv[1]);
 
   std::unique_ptr<renderer> r;
-  cppless::tracing_span_container spans;
-  auto root = spans.create_root("root").start();
+  //cppless::tracing_span_container spans;
+  //auto root = spans.create_root("root").start();
   if (program["--dispatcher"] == true) {
     auto tile_width = program.get<unsigned int>("--dispatcher-tile-width");
     auto tile_height = program.get<unsigned int>("--dispatcher-tile-height");
-    r = std::make_unique<aws_lambda_renderer>(tile_width, tile_height, root);
+    r = std::make_unique<aws_lambda_renderer>(tile_width, tile_height, repetitions, output_location, img_location);
   } else if (program["--serial"] == true) {
-    r = std::make_unique<single_threaded_renderer>();
-  } else if (program["--threads"] == true) {
-    r = std::make_unique<multi_threaded_renderer>(8);
+    r = std::make_unique<single_threaded_renderer>(repetitions, output_location, img_location);
+  } else if (program["--threads"] != -1) {
+    auto tile_width = program.get<unsigned int>("--dispatcher-tile-width");
+    auto tile_height = program.get<unsigned int>("--dispatcher-tile-height");
+    r = std::make_unique<multi_threaded_renderer>(program.get<int>("--threads"), tile_width, tile_height, repetitions, output_location, img_location);
   }
+  auto start = std::chrono::high_resolution_clock::now();
   r->start(
       {
           .world = world,
@@ -171,38 +191,46 @@ __attribute((weak)) int main(int argc, char* argv[])
       finished,
       cv);
 
-  while (true) {
-    std::unique_lock lk(mu);
+ // while (true) {
+ //   std::unique_lock lk(mu);
 
-    double current_progress = progress;
-    bool current_finished = finished;
+ //   double current_progress = progress;
+ //   bool current_finished = finished;
 
-    std::cerr << std::setw(5) << std::setfill('0') << std::fixed
-              << std::setprecision(2) << "\rProgress: " << progress * 100 << "%"
-              << std::flush;
-    if (current_finished) {
-      break;
-}
-    cv.wait(lk,
-            [&]() {
-              return progress != current_progress
-                  || current_finished != finished;
-            });
-  }
+ //   //std::cerr << std::setw(5) << std::setfill('0') << std::fixed
+ //   //          << std::setprecision(2) << "\rProgress: " << progress * 100 << "%"
+ //   //          << std::flush;
+ //   if (current_finished) {
+ //     break;
+ // }
+ //   cv.wait(lk,
+ //           [&]() {
+ //             return progress != current_progress
+ //                 || current_finished != finished;
+ //           });
+ // }
 
   r->join();
+  auto end = std::chrono::high_resolution_clock::now();
+  auto duration = std::chrono::duration_cast<std::chrono::microseconds>(end-start).count();
 
-  std::cout << img;
+  std::cout << "Time: " << duration << std::endl;
+
+  if(!img_location.empty() && program["--dispatcher"] == false) {
+
+    std::ofstream file{img_location, std::ios::out};
+    file << img;
+  }
 
   std::cerr << "\nDone.\n";
 
   // If using dispatcher and option is set, write trace
-  if (program["--dispatcher"] == true) {
-    auto trace_location = program.get<std::string>("--dispatcher-trace-output");
-    if (!trace_location.empty()) {
-      std::ofstream trace_file(trace_location);
-      nlohmann::json spans_json = spans;
-      trace_file << spans_json.dump(2);
-    }
-  }
+  //if (program["--dispatcher"] == true) {
+  //  auto trace_location = program.get<std::string>("--dispatcher-trace-output");
+  //  if (!trace_location.empty()) {
+  //    std::ofstream trace_file(trace_location);
+  //    nlohmann::json spans_json = spans;
+  //    trace_file << spans_json.dump(2);
+  //  }
+  //}
 }

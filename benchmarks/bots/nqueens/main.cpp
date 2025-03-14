@@ -34,6 +34,10 @@ __attribute((weak)) auto main(int argc, char* argv[]) -> int
       .help("Use dispatcher")
       .default_value(false)
       .implicit_value(true);
+  program.add_argument("--threads-number")
+      .help("Number of threads")
+      .default_value(1)
+      .scan<'i', int>();
   program.add_argument("--threads-prefix-length")
       .help("Prefix length value when using the dispatcher implementation")
       .default_value(2)
@@ -41,6 +45,13 @@ __attribute((weak)) auto main(int argc, char* argv[]) -> int
   program.add_argument("input_size")
       .help("display the square of a given integer")
       .scan<'i', unsigned int>();
+  program.add_argument("-r")
+      .help("number of repetitions")
+      .default_value(1)
+      .scan<'i', int>();
+  program.add_argument("-o")
+      .default_value(std::string(""))
+      .help("location to write output statistics");
 
   try {
     program.parse_args(argc, argv);
@@ -50,6 +61,9 @@ __attribute((weak)) auto main(int argc, char* argv[]) -> int
     std::exit(1);
   }
   auto size = program.get<unsigned int>("input_size");
+  int repetitions = program.get<int>("-r");
+  std::string output_location = program.get<std::string>("-o");
+  auto threads = program.get<int>("--threads-number");
 
   if (program["--serial"] == true) {
     unsigned int res = nqueens(serial_args {.size = size});
@@ -58,7 +72,13 @@ __attribute((weak)) auto main(int argc, char* argv[]) -> int
     auto prefix_length =
         program.get<unsigned int>("--dispatcher-prefix-length");
     unsigned int res =
-        nqueens(dispatcher_args {.size = size, .prefix_length = prefix_length});
+        nqueens(dispatcher_args {
+          .size = size,
+          .prefix_length = prefix_length,
+          .threads = threads,
+          .repetitions = repetitions,
+          .output_location = output_location
+        });
     std::cout << res << std::endl;
   } else if (program["--graph"] == true) {
     auto prefix_length = program.get<unsigned int>("--graph-prefix-length");
@@ -67,8 +87,13 @@ __attribute((weak)) auto main(int argc, char* argv[]) -> int
     std::cout << res << std::endl;
   } else if (program["--threads"] == true) {
     auto prefix_length = program.get<unsigned int>("--threads-prefix-length");
-    unsigned int res =
-        nqueens(threads_args {.size = size, .prefix_length = prefix_length});
+    unsigned int res = nqueens(threads_args {
+        .size = size,
+        .prefix_length = prefix_length,
+        .threads = threads,
+        .repetitions = repetitions,
+        .output_location = output_location
+    });
     std::cout << res << std::endl;
   }
 

@@ -25,7 +25,7 @@
 #include <cppless/utils/uninitialized.hpp>
 #include <nlohmann/json.hpp>
 
-#include "common.hpp"
+//#include "common.hpp"
 
 #ifndef TARGET_NAME
 #  define TARGET_NAME "cppless"  // NOLINT
@@ -82,10 +82,10 @@ struct with_ephemeral_storage
 };
 
 template<unsigned int Timeout>
-class with_timeout
+struct with_timeout
 {
   template<class Base>
-  class apply : public Base
+  struct apply : public Base
   {
     constexpr static unsigned int timeout = Timeout;
   };
@@ -238,7 +238,7 @@ public:
       payload = RequestArchive::serialize(data);
     }
 
-    std::cout << "payload size: " << payload.size() << std::endl;
+    //std::cout << "payload size: " << payload.size() << std::endl;
 
     int id = m_started++;
     auto req =
@@ -263,7 +263,7 @@ public:
     {
       scoped_tracing_span deserialization_span(span, "deserialization");
 
-      std::tuple<typename TaskType::res&, execution_statistics> result{result_target, execution_statistics{"", false});
+      std::tuple<typename TaskType::res&, execution_statistics> result{result_target, execution_statistics{"", false}};
       ResponseArchive::deserialize(res.body, result);
 
       m_finished[id] = std::get<1>(result);
@@ -394,7 +394,8 @@ public:
         std::make_shared<cppless::aws::lambda::beast_invocation_request>(
             task_function_name(t), "$LATEST", payload);
 
-    m_requests.push_back(req);
+    //m_requests.push_back(req);
+    m_requests[id] = req;
 
     req->on_result(
         [id, &result_target, this, span](
@@ -421,6 +422,7 @@ public:
     auto it = m_finished.begin();
     auto ret = *it;
     m_finished.erase(it);
+    m_requests.erase(std::get<0>(ret));
     return ret;
   }
 
@@ -431,8 +433,7 @@ private:
   beast::resolver_session m_resolver;
   cppless::aws::aws_v4_derived_key m_key;
 
-  std::vector<std::shared_ptr<cppless::aws::lambda::beast_invocation_request>>
-      m_requests;
+  std::unordered_map<int, std::shared_ptr<cppless::aws::lambda::beast_invocation_request>>  m_requests;
   std::unordered_map<int, execution_statistics> m_finished;
 
   int m_next_id = 0;
@@ -496,6 +497,7 @@ public:
     ::aws::lambda_runtime::run_handler(
         [&is_cold](invocation_request const& request)
         {
+          //auto start = std::chrono::high_resolution_clock::now();
           uninitialized_recv u;
           std::tuple<Args...> s_args;
           // task_data takes both of its constructor arguments by reference,
@@ -503,14 +505,24 @@ public:
           // `m_self` and the arguments into `s_args`.
           task_data<Receivable, Args...> t_data {u.m_self, s_args};
           RequestArchive::deserialize(request.payload, t_data);
+          //auto end = std::chrono::high_resolution_clock::now();
 
+          //auto start2 = std::chrono::high_resolution_clock::now();
           std::tuple<Res, execution_statistics> res;
           std::get<0>(res) = std::apply(u.m_self, s_args);
+          //auto end2 = std::chrono::high_resolution_clock::now();
           std::get<1>(res) = {request.request_id, is_cold};
           if (is_cold)
             is_cold = false;
 
+          //auto start3 = std::chrono::high_resolution_clock::now();
           auto serialized_res = ResponseArchive::serialize(res);
+          //auto end3 = std::chrono::high_resolution_clock::now();
+
+          //std::cerr << "TRACE deser " << std::chrono::duration_cast<std::chrono::microseconds>(end-start).count() << std::endl;
+          //std::cerr << "TRACE compute " << std::chrono::duration_cast<std::chrono::microseconds>(end2-start2).count() << std::endl;
+          //std::cerr << "TRACE ser " << std::chrono::duration_cast<std::chrono::microseconds>(end3-start3).count() << std::endl;
+
           // serialized_res.
           return invocation_response::success(serialized_res,
                                               "application/json");
