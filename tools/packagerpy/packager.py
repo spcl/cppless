@@ -123,6 +123,7 @@ if (
 
 session = boto3.session.Session(access_key_id, secret_access_key, None, region)
 aws_lambda: LambdaClient = session.client("lambda")
+s3_client = session.client('s3', region_name=region)
 
 image = args.image
 
@@ -462,6 +463,27 @@ def handle_entry_point(
             )
         )
 
+        s3_bucket_name = "cppless-code"
+        if len(zip_bytes) > 70160000:
+
+            s3_key = f"lambda-code/{function_name}-{zip_sha256_base64}.zip"
+
+            # Upload code to S3
+            print(f"Code size exceeds threshold. Uploading to S3: {s3_bucket_name}/{s3_key}")
+            s3_client.put_object(
+                Bucket=s3_bucket_name,
+                Key=s3_key,
+                Body=zip_bytes
+            )
+
+            # Modified code reference using S3 instead of direct ZipFile
+            code_reference = {
+                "S3Bucket": s3_bucket_name,
+                "S3Key": s3_key
+            }
+        else:
+            code_reference = {"ZipFile": zip_bytes}
+
         try:
             if "create" in actions:
                 aws_lambda.create_function(
@@ -469,11 +491,14 @@ def handle_entry_point(
                     Runtime="provided.al2023",
                     Role=function_role_arn,
                     Handler="bootstrap",
-                    Code={"ZipFile": zip_bytes},
+                    Code=code_reference,
                     Timeout=timeout,
                     MemorySize=memory,
                     # EphemeralStorage={"Size": ephemeral_storage} aws_lambda.,
                 )
+
+                waiter = aws_lambda.get_waiter('function_exists')
+                waiter.wait(FunctionName=function_name)
             if "update-config" in actions:
                 aws_lambda.update_function_configuration(
                     FunctionName=function_name,
@@ -481,15 +506,22 @@ def handle_entry_point(
                     MemorySize=memory,
                     # EphemeralStorage={"Size": ephemeral_storage},
                 )
+                waiter = aws_lambda.get_waiter('function_updated')
+                waiter.wait(FunctionName=function_name)
             if "update-code" in actions:
                 aws_lambda.update_function_code(
-                    FunctionName=function_name, ZipFile=zip_bytes
+                    FunctionName=function_name,
+                    **code_reference
                 )
+                waiter = aws_lambda.get_waiter('function_updated')
+                waiter.wait(FunctionName=function_name)
             if "update-role" in actions:
                 aws_lambda.update_function_configuration(
                     FunctionName=function_name,
                     Role=function_role_arn,
                 )
+                waiter = aws_lambda.get_waiter('function_updated')
+                waiter.wait(FunctionName=function_name)
         except Exception as e:
             print(e)
 
