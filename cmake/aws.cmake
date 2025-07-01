@@ -11,10 +11,10 @@ function(aws_lambda_package_target target)
         set (PACKAGER_NO_LIBC "--libc")
     endif()
 
-    if (${SYSROOT})
-        set (PACKAGER_SYROOT "--sysroot" ${SYSROOT})
+    if (DEFINED SYSROOT)
+      set (PACKAGER_SYROOT "--sysroot" ${SYSROOT})
     else()
-        set (PACKAGER_SYROOT)
+      set (PACKAGER_SYROOT)
     endif()
 
     if (${DOCKER_IMAGE})
@@ -22,16 +22,31 @@ function(aws_lambda_package_target target)
     else()
         set (PACKAGER_IMAGE)
     endif()
-    add_custom_target("aws_lambda_package_${target}"
-        COMMAND ${AWS_LAMBDA_PACKAGING_SCRIPT} ${PACKAGER_NO_LIBC}
-        "--project" ${CMAKE_BINARY_DIR}
-        ${PACKAGER_SYROOT}
-        ${PACKAGER_IMAGE}
-        "--target-name" ${target}
-        "--strip"
-        "--deploy"
-        $<TARGET_FILE:${target}>
-        DEPENDS ${target})
+
+    if("${CPPLESS_TOOLCHAIN}" STREQUAL "aarch64")
+      add_custom_target("aws_lambda_package_${target}"
+          COMMAND ${AWS_LAMBDA_PACKAGING_SCRIPT} ${PACKAGER_NO_LIBC}
+          "--project" ${CMAKE_BINARY_DIR}
+          "--project-source" ${CMAKE_SOURCE_DIR}
+          ${PACKAGER_SYROOT}
+          ${PACKAGER_IMAGE}
+          "--target-name" ${target}
+          "--deploy"
+          "--architecture" "aarch64"
+          $<TARGET_FILE:${target}>
+          DEPENDS ${target})
+    else()
+      add_custom_target("aws_lambda_package_${target}"
+          COMMAND ${AWS_LAMBDA_PACKAGING_SCRIPT} ${PACKAGER_NO_LIBC}
+          "--project" ${CMAKE_BINARY_DIR}
+          ${PACKAGER_SYROOT}
+          ${PACKAGER_IMAGE}
+          "--target-name" ${target}
+          "--strip"
+          "--deploy"
+          $<TARGET_FILE:${target}>
+          DEPENDS ${target})
+    endif()
 endfunction()
 
 function(aws_lambda_target NAME)
@@ -73,6 +88,7 @@ function(aws_lambda_serverless_target NAME)
             BUILD_ALWAYS ON
             CMAKE_ARGS
                 -DCPPLESS_SERVERLESS=ON
+                -DCPPLESS_TOOLCHAIN=${CPPLESS_TOOLCHAIN}
                 -DCMAKE_BUILD_TYPE=Release
                 -DCMAKE_TOOLCHAIN_FILE=${CMAKE_SOURCE_DIR}/cmake/toolchains/${CPPLESS_TOOLCHAIN}/toolchain.cmake
                 -DCMAKE_MAKE_PROGRAM=${CMAKE_MAKE_PROGRAM}
