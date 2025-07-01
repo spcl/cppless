@@ -20,6 +20,10 @@ The cmake configuration of this project will automatically use the `clang` execu
 
 See the [BUILDING](BUILDING.md) document.
 
+### ARM Cross-compilation
+
+To deploy ARM functions from an x86 system, check the documentation on setting up sysroot and toolchain in `cmake/toolchains/aarch64`.
+
 ## Benchmarks
 
 Implementations:
