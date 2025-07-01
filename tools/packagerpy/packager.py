@@ -225,7 +225,6 @@ class CrossArmEnvironment:
         ldd = subprocess.run(args, capture_output=True)
         ldd_output = ldd.stdout
         paths = parse_ldd(ldd_output)
-        print(ldd_output.decode("utf-8"))
         return paths
 
     def get_libc_paths(self):
