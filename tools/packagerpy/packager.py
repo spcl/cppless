@@ -481,7 +481,7 @@ def handle_entry_point(
         hash.update(str(timeout).encode("utf-8"))
 
         # hash & hex encode the function name to avoid issues with special characters
-        function_name = target_name + "-" + hash.digest().hex()[:8]
+        function_name = target_name + "-" + hash.digest().hex()[:8] + "-" + architecture
 
         print(f"Deploying {function_name}")
 
