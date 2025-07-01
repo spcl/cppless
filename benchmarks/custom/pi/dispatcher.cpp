@@ -77,7 +77,11 @@ auto main(int argc, char* argv[]) -> int
     int first_id = -1;
 
     std::vector<double> results(np);
-    
+
+    // This will also work
+    // auto fn = [=]() { return pi_estimate(n / np); };
+    // auto id = cppless::dispatch(instance, fn, results[i]);
+
     auto startc = clock();
     auto start = std::chrono::high_resolution_clock::now();
     for (int i = 0; i < np; i++) {
