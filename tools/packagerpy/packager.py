@@ -12,7 +12,7 @@ import zipfile
 from datetime import datetime
 from pathlib import Path, PurePosixPath
 from threading import Thread
-from typing import List, Set
+from typing import List, Set, Optional
 
 import boto3
 import botocore.exceptions
@@ -32,12 +32,27 @@ parser.add_argument(
     "-s", "--sysroot", type=str, help="The sysroot to use.", default="", required=False
 )
 parser.add_argument(
+    "--architecture",
+    type=str,
+    help="Architecture of target",
+    default="x64",
+    required=False,
+)
+parser.add_argument(
     "-p",
     "--project",
     metavar="project",
     type=str,
     help="The root directory of the project.",
     required=True,
+)
+parser.add_argument(
+    "--project-source",
+    metavar="project_source",
+    default="",
+    type=str,
+    help="The root source directory of the project.",
+    required=False,
 )
 parser.add_argument(
     "-i",
@@ -86,15 +101,22 @@ if args.sysroot:
 else:
     sysroot_path = None
 project_path = Path(args.project).absolute()
+project_source = Path(args.project_source).absolute()
 libc = args.libc
 strip = args.strip
 deploy = args.deploy
 function_role_arn = args.function_role_arn
 target_name = args.target_name
+architecture = args.architecture
 
 region = os.environ.get("AWS_REGION", "")
 access_key_id = os.environ.get("AWS_ACCESS_KEY_ID", "")
 secret_access_key = os.environ.get("AWS_SECRET_ACCESS_KEY", "")
+function_role_arn = (
+    os.environ.get("AWS_FUNCTION_ROLE_ARN", "")
+    if function_role_arn == ""
+    else function_role_arn
+)
 
 if (
     region == ""
@@ -180,6 +202,37 @@ class NativeEnvironment:
         return paths
 
 
+class CrossArmEnvironment:
+    def __init__(self):
+        pass
+
+    def start(self):
+        pass
+
+    def stop(self):
+        pass
+
+    def strip(self, path):
+        pass
+
+    def ldd(self, path):
+        args = []
+        args.append("/bin/bash")
+        args.append(project_source / "tools" / "packagerpy" / "cross-compile-ldd" / "cross-compile-ldd")
+        args.append("--root")
+        args.append(sysroot_path)
+        args.append(path)
+        ldd = subprocess.run(args, capture_output=True)
+        ldd_output = ldd.stdout
+        paths = parse_ldd(ldd_output)
+        print(ldd_output.decode("utf-8"))
+        return paths
+
+    def get_libc_paths(self):
+        paths = set([PurePosixPath("/lib/ld-linux-aarch64.so.1")])
+        return paths
+
+
 class DockerEnvironment:
     container: Container
     container_root = PurePosixPath("/usr/src/project/")
@@ -251,6 +304,8 @@ class EnvironmentWrapper:
 if image:
     docker_client = docker.from_env()
     environment = DockerEnvironment(docker_client, image)
+elif architecture == "aarch64":
+    environment = CrossArmEnvironment()
 else:
     environment = NativeEnvironment()
 
@@ -309,7 +364,7 @@ def strip_binary(executable_path: Path, environment):
 
 def aws_lambda_package(
     executable_path: Path,
-    sysroot_path: Path,
+    sysroot_path: Optional[Path],
     environment,
     libc: bool,
     libc_paths: Set[PurePosixPath],
@@ -393,6 +448,7 @@ def handle_entry_point(
     deploy: bool,
     function_role_arn: str,
     environment,
+    architecture: str,
     musl_paths: Set[PurePosixPath],
 ):
     executable_path = entry_file_path
@@ -428,7 +484,7 @@ def handle_entry_point(
         # hash & hex encode the function name to avoid issues with special characters
         function_name = target_name + "-" + hash.digest().hex()[:8]
 
-        print(function_name)
+        print(f"Deploying {function_name}")
 
         fn = None
         try:
@@ -486,6 +542,13 @@ def handle_entry_point(
 
         try:
             if "create" in actions:
+                if architecture == "x64":
+                    architectures = ["x86_64"]
+                elif architecture == "aarch64":
+                    architectures = ["arm64"]
+                else:
+                    raise NotImplementedError("Unsupported architecture")
+                print("Architecture", architectures)
                 aws_lambda.create_function(
                     FunctionName=function_name,
                     Runtime="provided.al2023",
@@ -494,6 +557,7 @@ def handle_entry_point(
                     Code=code_reference,
                     Timeout=timeout,
                     MemorySize=memory,
+                    Architectures=architectures,
                     # EphemeralStorage={"Size": ephemeral_storage} aws_lambda.,
                 )
 
@@ -558,6 +622,7 @@ with EnvironmentWrapper(environment) as e:
                 deploy,
                 function_role_arn,
                 environment,
+                architecture,
                 libc_paths,
             ),
         )
