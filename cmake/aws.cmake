@@ -68,14 +68,20 @@ function(aws_lambda_serverless_target NAME)
         aws_lambda_package_target("${NAME}")
     else()
         include(ExternalProject)
+        message("Build with flags ${CMAKE_PREFIX_PATH}")
+
+        # https://stackoverflow.com/questions/45414507/pass-a-list-of-prefix-paths-to-externalproject-add-in-cmake-args
+        string(REPLACE ";" "|" CMAKE_PREFIX_PATH_ALT_SEP "${CMAKE_PREFIX_PATH}")
         ExternalProject_Add(serverless-${NAME}
             SOURCE_DIR "${CMAKE_SOURCE_DIR}"
             BUILD_ALWAYS ON
             CMAKE_ARGS
                 -DCPPLESS_SERVERLESS=ON
                 -DCMAKE_BUILD_TYPE=Release
+                -DCMAKE_PREFIX_PATH="${CMAKE_PREFIX_PATH_ALT_SEP}"
                 -DCMAKE_TOOLCHAIN_FILE=${CMAKE_SOURCE_DIR}/cmake/toolchains/${CPPLESS_TOOLCHAIN}/toolchain.cmake
                 -DCMAKE_MAKE_PROGRAM=${CMAKE_MAKE_PROGRAM}
+            LIST_SEPARATOR | 
             INSTALL_COMMAND true
             BUILD_COMMAND cmake --build . --target aws_lambda_package_${NAME}
             )
