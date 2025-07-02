@@ -380,8 +380,8 @@ class builder_core : public std::enable_shared_from_this<builder_core<Executor>>
 public:
   explicit builder_core(std::optional<tracing_span_ref> span,
                         std::shared_ptr<Executor> executor)
-      : m_executor(std::move(executor))
-      , m_span(std::move(span))
+      : m_span(std::move(span)),
+        m_executor(std::move(executor))
   {
   }
 

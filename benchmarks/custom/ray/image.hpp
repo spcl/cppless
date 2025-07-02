@@ -52,6 +52,17 @@ public:
 
   auto clear() -> void { m_data.clear(); }
 
+  auto clean() -> void
+  {
+
+    for (unsigned long y = 0; y < m_height; y++) {
+      for (unsigned long x = 0; x < m_width; x++) {
+        this->operator()(x, y) = color{};
+      }
+    }
+
+  }
+
   template<class Archive>
   void serialize(Archive& ar)
   {

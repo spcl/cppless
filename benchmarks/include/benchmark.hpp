@@ -9,11 +9,31 @@
 #include <argparse/argparse.hpp>
 #include <boost/ut.hpp>
 
+#include <sys/time.h>
+#include <x86intrin.h>
+
 namespace benchmark
 {
 
 auto dry_run = false;
 const long long min_time = 1000000000UL;  // 1 second
+
+#if defined(__GNUC__) or defined(__clang__)
+template<class T>
+void do_not_optimize(T&& t)
+{
+  asm volatile("" ::"m"(t) : "memory");
+}
+#else
+#  pragma optimize("", off)
+template<class T>
+void do_not_optimize(T&& t)
+{
+  reinterpret_cast<char volatile&>(t) =
+      reinterpret_cast<char const volatile&>(t);
+}
+#  pragma optimize("", on)
+#endif
 
 auto parse_args(argparse::ArgumentParser& program, int argc, char** argv)
     -> std::tuple<std::string>
@@ -85,6 +105,142 @@ private:
   L m_l;
 };
 
+double mysecond()
+{
+/* struct timeval { long        tv_sec;
+            long        tv_usec;        };
+
+struct timezone { int   tz_minuteswest;
+             int        tz_dsttime;      };     */
+
+        struct timeval tp;
+        struct timezone tzp;
+        int i;
+
+        i = gettimeofday(&tp,&tzp);
+        return ( (double) tp.tv_sec + (double) tp.tv_usec * 1.e-6 );
+}
+
+
+inline void flush_cachelines(char* ptr, size_t size)
+{
+  constexpr static int CACHELINE_SIZE = 64;
+
+  int i = 1;
+  char* ptr_end = ptr + size;
+  while(ptr <= ptr_end) {
+++i;
+     _mm_clflush(ptr);
+    ptr += CACHELINE_SIZE; 
+  }
+
+  // verify that we also checked the last byte
+  // will happen when the address is not 64-byte aligned
+  // or the size is divisible by 64
+  // this could be conditional but it's much easier to do
+  // additional call
+  _mm_clflush(ptr);
+ 
+  std::clog << "Flushes " << i << std::endl; 
+}
+
+
+template<typename F>
+void microbenchmark(F && f, char* ptr1, size_t size1, char* ptr2, size_t size2)
+{
+  using duration = std::chrono::high_resolution_clock::duration;
+  using time_point = std::chrono::high_resolution_clock::time_point;
+  time_point start;
+  time_point stop;
+  std::vector<duration> times;
+
+  uint64_t total_ns = 0;
+  uint64_t total_runs = 0;
+  double total_t = 0.0;
+  for(int i = 0; i < 101; ++i) {
+
+    if(ptr1)
+      flush_cachelines(ptr1, size1);
+
+    if(ptr2)
+      flush_cachelines(ptr2, size2);
+
+    start = std::chrono::high_resolution_clock::now();
+    auto s = mysecond();
+    f();
+    auto e = mysecond();
+    stop = std::chrono::high_resolution_clock::now();
+
+    if(i != 0) {
+      const auto ns =
+          std::chrono::duration_cast<std::chrono::nanoseconds>(stop - start);
+      times.push_back(ns);
+      total_ns += ns.count();
+      total_runs += 1;
+      total_t += e - s;
+    } else {
+      const auto ns =
+          std::chrono::duration_cast<std::chrono::nanoseconds>(stop - start);
+      std::cerr << ns.count() << std::endl;
+    }
+  }
+
+  auto average_ns = static_cast<double>(total_ns)
+      / static_cast<double>(total_runs);
+
+  std::clog << average_ns << std::endl;
+  std::cerr << total_t << std::endl;
+}
+
+template<typename F>
+void microbenchmark(F && f)
+{
+  using duration = std::chrono::high_resolution_clock::duration;
+  using time_point = std::chrono::high_resolution_clock::time_point;
+  time_point start;
+  time_point stop;
+  std::vector<duration> times;
+
+  std::vector<double> cache_checkup(100*1000*1000, 0.0);
+
+  uint64_t total_ns = 0;
+  uint64_t total_runs = 0;
+  double total_t = 0.0;
+  for(int i = 0; i < 101; ++i) {
+
+    for(int j = 0; j < cache_checkup.size(); ++j) {
+      cache_checkup[j] += 0.001;
+    }
+
+    start = std::chrono::high_resolution_clock::now();
+    auto s = mysecond();
+    f();
+    auto e = mysecond();
+    stop = std::chrono::high_resolution_clock::now();
+
+    if(i != 0) {
+      const auto ns =
+          std::chrono::duration_cast<std::chrono::nanoseconds>(stop - start);
+      times.push_back(ns);
+      total_ns += ns.count();
+      total_runs += 1;
+      total_t += e - s;
+    } else {
+      const auto ns =
+          std::chrono::duration_cast<std::chrono::nanoseconds>(stop - start);
+      std::cerr << ns.count() << std::endl;
+    }
+  }
+
+  auto average_ns = static_cast<double>(total_ns)
+      / static_cast<double>(total_runs);
+
+  do_not_optimize(cache_checkup.data());
+  std::clog << average_ns << std::endl;
+  std::cerr << total_t << std::endl;
+  std::clog << cache_checkup.size() << " " << cache_checkup[1000] << std::endl;
+}
+
 struct benchmark : boost::ut::detail::test
 {
   explicit benchmark(std::string name)
@@ -130,40 +286,59 @@ struct benchmark : boost::ut::detail::test
       unsigned int total_runs = 1;
       auto total_ns = initial_ns;
 
-      while (total_ns.count() < min_time) {
-        time_point start;
-        time_point stop;
-        if (batch_size > 1) {
-          auto l = [&](auto run)
-          {
-            start = std::chrono::steady_clock::now();
-            for (unsigned int i = 0; i < batch_size; i++) {
-              run();
-            }
-            stop = std::chrono::steady_clock::now();
-          };
+      time_point start;
+      time_point stop;
+      for(int i = 0; i < 101; ++i) {
 
-          test(benchmark_accessor {l});
+        start = std::chrono::steady_clock::now();
+        //run();
+        stop = std::chrono::steady_clock::now();
 
-        } else {
-          auto l = [&](auto run)
-          {
-            start = std::chrono::steady_clock::now();
-            run();
-            stop = std::chrono::steady_clock::now();
-          };
-          test(benchmark_accessor {l});
-        };
-
-        const auto ns =
-            std::chrono::duration_cast<std::chrono::nanoseconds>(stop - start);
-        times.push_back(ns);
-        total_ns += ns;
-        total_runs += batch_size;
+        if(i != 0) {
+          const auto ns =
+              std::chrono::duration_cast<std::chrono::nanoseconds>(stop - start);
+          times.push_back(ns);
+          total_ns += ns;
+          total_runs += 1;
+        }
       }
+
+      //while (total_ns.count() < min_time) {
+      //  time_point start;
+      //  time_point stop;
+      //  //if (batch_size > 1) {
+      //  //  auto l = [&](auto run)
+      //  //  {
+      //  //    start = std::chrono::steady_clock::now();
+      //  //    for (unsigned int i = 0; i < batch_size; i++) {
+      //  //      run();
+      //  //    }
+      //  //    stop = std::chrono::steady_clock::now();
+      //  //  };
+
+      //  //  test(benchmark_accessor {l});
+
+      //  //} else {
+      //  //  auto l = [&](auto run)
+      //  //  {
+      //  //    start = std::chrono::steady_clock::now();
+      //  //    run();
+      //  //    stop = std::chrono::steady_clock::now();
+      //  //  };
+      //  //  test(benchmark_accessor {l});
+      //  //};
+
+      //  const auto ns =
+      //      std::chrono::duration_cast<std::chrono::nanoseconds>(stop - start);
+      //  times.push_back(ns);
+      //  total_ns += ns;
+      //  total_runs += batch_size;
+      //}
 
       auto average_ns = static_cast<double>(total_ns.count())
           / static_cast<double>(total_runs);
+
+      std::clog << average_ns << std::endl;
 
       std::string unit = "ns";
       double scale = 1.0;
@@ -215,20 +390,4 @@ private:
   return ::benchmark::benchmark {{name, size}};
 }
 
-#if defined(__GNUC__) or defined(__clang__)
-template<class T>
-void do_not_optimize(T&& t)
-{
-  asm volatile("" ::"m"(t) : "memory");
-}
-#else
-#  pragma optimize("", off)
-template<class T>
-void do_not_optimize(T&& t)
-{
-  reinterpret_cast<char volatile&>(t) =
-      reinterpret_cast<char const volatile&>(t);
-}
-#  pragma optimize("", on)
-#endif
 }  // namespace benchmark

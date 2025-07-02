@@ -311,7 +311,8 @@ public:
         break;
       }
 
-      int finished = m_instance.wait_one();
+      auto res = m_instance.wait_one();
+      int finished = std::get<0>(res);
 
       std::size_t finished_node_id = m_future_node_map[finished];
       auto node = builder->node(finished_node_id);
