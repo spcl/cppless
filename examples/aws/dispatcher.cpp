@@ -59,23 +59,23 @@ auto do_task(int i, cppless::tracing_span_ref span) -> int
                       std::make_tuple(i - 2),
                       b_span.create_child("dispatch"));
 
-    int fst_id = instance.wait_one();
+    auto fst_id = instance.wait_one();
     auto fst_end = std::chrono::steady_clock::now();
-    if (fst_id == task_a) {
+    if (std::get<0>(fst_id) == task_a) {
       a_span.end();
     } else {
       b_span.end();
     }
     instance.wait_one();
-    if (fst_id == task_a) {
+    if (std::get<0>(fst_id) == task_a) {
       b_span.end();
     } else {
       a_span.end();
     }
 
     auto snd_end = std::chrono::steady_clock::now();
-    auto a_end = fst_id == task_a ? fst_end : snd_end;
-    auto b_end = fst_id == task_a ? snd_end : fst_end;
+    auto a_end = std::get<0>(fst_id) == task_a ? fst_end : snd_end;
+    auto b_end = std::get<0>(fst_id) == task_a ? snd_end : fst_end;
 
     int a_value = std::get<0>(a_data);
     std::chrono::duration<long long, std::nano> a_clk_diff =

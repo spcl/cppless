@@ -10,7 +10,12 @@
 #include <boost/ut.hpp>
 
 #include <sys/time.h>
+
+#include <boost/predef.h>
+
+#if BOOST_ARCH_X86
 #include <x86intrin.h>
+#endif
 
 namespace benchmark
 {
@@ -18,7 +23,7 @@ namespace benchmark
 auto dry_run = false;
 const long long min_time = 1000000000UL;  // 1 second
 
-#if defined(__GNUC__) or defined(__clang__)
+#if (defined(__GNUC__) or defined(__clang__)) and BOOST_ARCH_X86
 template<class T>
 void do_not_optimize(T&& t)
 {
@@ -124,13 +129,14 @@ struct timezone { int   tz_minuteswest;
 
 inline void flush_cachelines(char* ptr, size_t size)
 {
+#if BOOST_ARCH_X86
   constexpr static int CACHELINE_SIZE = 64;
 
   int i = 1;
   char* ptr_end = ptr + size;
   while(ptr <= ptr_end) {
-++i;
-     _mm_clflush(ptr);
+    ++i;
+    _mm_clflush(ptr);
     ptr += CACHELINE_SIZE; 
   }
 
@@ -142,6 +148,10 @@ inline void flush_cachelines(char* ptr, size_t size)
   _mm_clflush(ptr);
  
   std::clog << "Flushes " << i << std::endl; 
+#else
+  std::cerr << "Not supported on this architecture" << std::endl;
+  abort();
+#endif
 }
 
 

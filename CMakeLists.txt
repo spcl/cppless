@@ -47,81 +47,93 @@ endif()
 
 include(${CMAKE_BINARY_DIR}/conan.cmake)
 
-# openssl is overriden to the latest version
-# libcurl is needed
-conan_cmake_configure(REQUIRES cereal/1.3.1
-                               nlohmann_json/3.10.5
-                               libnghttp2/1.47.0
-                               boost-ext-ut/1.1.8
-                               zlib/1.2.12
-                               openssl/3.0.3
-                               libcurl/7.80.0
-                               argparse/2.3
-                               boost/1.78.0
-                      GENERATORS cmake_find_package
-                      OPTIONS libnghttp2:with_asio=True
-                              boost:without_locale=True
-                              boost:without_iostreams=True
-                              boost:without_log=True
-                              boost:without_context=True
-                              boost:without_coroutine=True
-                              boost:without_fiber=True
-                              boost:without_stacktrace=True
-                              boost:without_contract=True
-                              boost:without_filesystem=True
-                              boost:without_json=True
-                              boost:without_nowide=True
-                              boost:without_test=True
-                              boost:without_timer=True
-                              boost:without_type_erasure=True
-                              boost:without_wave=True
-                              
-                              openssl:no_async=True)
+if(CPPLESS_SERVERLESS AND CPPLESS_TOOLCHAIN STREQUAL "aarch64")
 
-# The find-package conan generator uses the variables which are not necessarily defined
-set(_out_libraries "")
-set(_out_libraries_target "")
-set(0 1)
-set(xcode_sysroot_option "")
+  # We assume that cross-compiled dependencies are located in the sysroot
+  set(CMAKE_FIND_ROOT_PATH "${CMAKE_SOURCE_DIR}/cmake/toolchains/aarch64/sysroot")
+  set(ENV{PKG_CONFIG_DIR} "")
+  set(ENV{PKG_CONFIG_LIBDIR} "${CMAKE_SOURCE_DIR}/cmake/toolchains/aarch64/sysroot/lib/pkgconfig/")
 
-# Use auto-detection for host settings (will use our custom cpp compiler)
-conan_cmake_autodetect(CONAN_SETTINGS)
+else()
+
+  # openssl is overriden to the latest version
+  # libcurl is needed
+  conan_cmake_configure(REQUIRES cereal/1.3.1
+                                nlohmann_json/3.10.5
+                                libnghttp2/1.47.0
+                                boost-ext-ut/1.1.8
+                                zlib/1.2.12
+                                openssl/3.0.3
+                                libcurl/7.80.0
+                                argparse/2.3
+                                boost/1.78.0
+                        GENERATORS cmake_find_package
+                        OPTIONS libnghttp2:with_asio=True
+                                boost:without_locale=True
+                                boost:without_iostreams=True
+                                boost:without_log=True
+                                boost:without_context=True
+                                boost:without_coroutine=True
+                                boost:without_fiber=True
+                                boost:without_stacktrace=True
+                                boost:without_contract=True
+                                boost:without_filesystem=True
+                                boost:without_json=True
+                                boost:without_nowide=True
+                                boost:without_test=True
+                                boost:without_timer=True
+                                boost:without_type_erasure=True
+                                boost:without_wave=True
+                                
+                                openssl:no_async=True)
+
+  # The find-package conan generator uses the variables which are not necessarily defined
+  set(_out_libraries "")
+  set(_out_libraries_target "")
+  set(0 1)
+  set(xcode_sysroot_option "")
+
+  # Use auto-detection for host settings (will use our custom cpp compiler)
+  conan_cmake_autodetect(CONAN_SETTINGS)
 
 
-include(cmake/conan-utils.cmake)
-# We need some setting for the build system to force cross compilation
-conan_utils_host_system_name(CONAN_HOST_OS)
+  include(cmake/conan-utils.cmake)
+  # We need some setting for the build system to force cross compilation
+  conan_utils_host_system_name(CONAN_HOST_OS)
 
-# Construct host compilation environment
-set(ENV_HOST "")
-if (DEFINED CMAKE_C_COMPILER) 
-  list(APPEND ENV_HOST "CC=${CMAKE_C_COMPILER}")
-endif()
-if (DEFINED CMAKE_CXX_COMPILER) 
-  list(APPEND ENV_HOST "CXX=${CMAKE_CXX_COMPILER}")
-endif()
-if (DEFINED AR) 
-  list(APPEND ENV_HOST "AR=${AR}")
-endif()
-if (DEFINED RANLIB) 
-  list(APPEND ENV_HOST "RANLIB=${RANLIB}")
-endif()
-if (DEFINED CMAKE_C_FLAGS)
-  list(APPEND ENV_HOST "CFLAGS=${CMAKE_C_FLAGS}")
-endif()
-if (DEFINED CMAKE_CXX_FLAGS)
-  list(APPEND ENV_HOST "CXXFLAGS=${CMAKE_CXX_FLAGS}")
-endif()
-if (DEFINED LINK_FLAGS)
-  list(APPEND ENV_HOST "LDFLAGS=${LINK_FLAGS}")
-endif()
+  # Construct host compilation environment
+  set(ENV_HOST "")
+  if (DEFINED CMAKE_C_COMPILER) 
+    list(APPEND ENV_HOST "CC=${CMAKE_C_COMPILER}")
+  endif()
+  if (DEFINED CMAKE_CXX_COMPILER) 
+    list(APPEND ENV_HOST "CXX=${CMAKE_CXX_COMPILER}")
+  endif()
+  if (DEFINED AR) 
+    list(APPEND ENV_HOST "AR=${AR}")
+  endif()
+  if (DEFINED RANLIB) 
+    list(APPEND ENV_HOST "RANLIB=${RANLIB}")
+  endif()
+  if (DEFINED CMAKE_C_FLAGS)
+    list(APPEND ENV_HOST "CFLAGS=${CMAKE_C_FLAGS}")
+  endif()
+  if (DEFINED CMAKE_CXX_FLAGS)
+    list(APPEND ENV_HOST "CXXFLAGS=${CMAKE_CXX_FLAGS}")
+  endif()
+  if (DEFINED LINK_FLAGS)
+    list(APPEND ENV_HOST "LDFLAGS=${LINK_FLAGS}")
+  endif()
 
-conan_cmake_install(PATH_OR_REFERENCE .
-                    BUILD missing
-                    ENV_HOST "${ENV_HOST}"
-                    REMOTE conancenter
-                    SETTINGS_BUILD os=${CONAN_HOST_OS}
-                    SETTINGS_HOST ${CONAN_SETTINGS})
+  conan_cmake_install(PATH_OR_REFERENCE .
+                      BUILD missing
+                      ENV_HOST "${ENV_HOST}"
+                      REMOTE conancenter
+                      SETTINGS_BUILD os=${CONAN_HOST_OS}
+                      SETTINGS_HOST ${CONAN_SETTINGS}
+  )
+
+endif()
 
 
 # ---- Declare library ----
@@ -153,8 +165,15 @@ target_link_libraries(cppless_cppless INTERFACE nlohmann_json::nlohmann_json)
 find_package(cereal REQUIRED)
 target_link_libraries(cppless_cppless INTERFACE cereal::cereal)
 
-find_package(libnghttp2 REQUIRED)
-target_link_libraries(cppless_cppless INTERFACE libnghttp2::libnghttp2)
+if(CPPLESS_SERVERLESS AND CPPLESS_TOOLCHAIN STREQUAL "aarch64")
+  find_package(PkgConfig)
+  pkg_check_modules(libnghttp2 REQUIRED IMPORTED_TARGET libnghttp2)
+  pkg_check_modules(libnghttp2_asio REQUIRED IMPORTED_TARGET libnghttp2_asio)
+  target_link_libraries(cppless_cppless INTERFACE PkgConfig::libnghttp2 PkgConfig::libnghttp2_asio)
+else()
+  find_package(libnghttp2 REQUIRED)
+  target_link_libraries(cppless_cppless INTERFACE libnghttp2::libnghttp2)
+endif()
 
 find_package(argparse REQUIRED)
 target_link_libraries(cppless_cppless INTERFACE argparse::argparse)

@@ -20,6 +20,29 @@ The cmake configuration of this project will automatically use the `clang` execu
 
 See the [BUILDING](BUILDING.md) document.
 
+### ARM Cross-compilation
+
+To deploy ARM functions from an x86 system, check the documentation on setting up sysroot and toolchain in `cmake/toolchains/aarch64`.
+
+### Compatibility issues with stdlibc++
+
+The Clang's verison, on which Cppless is based, should work with the gcc-based libstdc++ toolchain until version 11.
+If your OS has a new version, you need tell CMake to use a different toolchain to avoid potential incompatibilities.
+
+Easiest way to do this:
+
+```
+mkdir -p toolchain/lib/gcc/x86_64-linux-gnu
+cd toolchain/lib/gcc/x86_64-linux-gnu
+ln -sfn /usr/lib/gcc/x86_64-linux-gnu/11 .
+```
+
+And in CMakeLists.txt add the following line:
+
+```cmake
+set(CMAKE_CXX_FLAGS "--gcc-toolchain=/work/2023/serverless/cppless/toolchain_root ${CMAKE_CXX_FLAGS}")
+```
+
 ## Benchmarks
 
 Implementations:
