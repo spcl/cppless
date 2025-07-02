@@ -2,7 +2,7 @@
 
 #include "./common.hpp"
 #include "./dispatcher.hpp"
-#include "./graph.hpp"
+//#include "./graph.hpp"
 #include "./serial.hpp"
 #include "./threads.hpp"
 
@@ -81,10 +81,10 @@ __attribute((weak)) auto main(int argc, char* argv[]) -> int
         });
     std::cout << res << std::endl;
   } else if (program["--graph"] == true) {
-    auto prefix_length = program.get<unsigned int>("--graph-prefix-length");
-    unsigned int res =
-        nqueens(graph_args {.size = size, .prefix_length = prefix_length});
-    std::cout << res << std::endl;
+    //auto prefix_length = program.get<unsigned int>("--graph-prefix-length");
+    //unsigned int res =
+    //    nqueens(graph_args {.size = size, .prefix_length = prefix_length});
+    //std::cout << res << std::endl;
   } else if (program["--threads"] == true) {
     auto prefix_length = program.get<unsigned int>("--threads-prefix-length");
     unsigned int res = nqueens(threads_args {

@@ -13,7 +13,7 @@ target_compile_features("benchmark_bots_nqueens" PRIVATE cxx_std_20)
 aws_lambda_target("benchmark_bots_nqueens")
 aws_lambda_serverless_target("benchmark_bots_nqueens")
 
-add_executable("benchmark_bots_nqueens_cli" main.cpp common.cpp dispatcher.cpp graph.cpp serial.cpp threads.cpp)
+add_executable("benchmark_bots_nqueens_cli" main.cpp common.cpp dispatcher.cpp serial.cpp threads.cpp)
 target_link_libraries("benchmark_bots_nqueens_cli" PRIVATE cppless::cppless)
 target_link_libraries("benchmark_bots_nqueens_cli" PRIVATE boost::ut)
 target_compile_features("benchmark_bots_nqueens_cli" PRIVATE cxx_std_20)
