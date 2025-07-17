@@ -4,6 +4,20 @@ Cppless is a single-source programming model for high-performance serverless. It
 
 The architecture of the compiler, including benchmark evaluation, details can be found in the thesis [Cppless: A single-source programming model for high-performance serverless](https://mcopik.github.io/assets/pdf/students/2022_cppless_moeller.pdf).
 
+When using Cppless, please cite our ACM TACO paper (to appear). An extended version of our paper is available on [arXiv](https://arxiv.org/abs/2401.10834).
+
+```
+@misc{cppless2025,
+  title={Cppless: Single-Source and High-Performance Serverless Programming in C++}, 
+  author={Marcin Copik and Lukas Möller and Alexandru Calotoiu and Torsten Hoefler},
+  year={2025},
+  eprint={2401.10834},
+  archivePrefix={arXiv},
+  primaryClass={cs.DC},
+  url={https://arxiv.org/abs/2401.10834}, 
+}
+```
+
 ## Building and installing
 
 Building applications that use cppless requires using a custom fork of the clang compiler. The modified version of the llvm-project is included as a submodule in the repository, it can be built by following these steps:
@@ -40,7 +54,7 @@ ln -sfn /usr/lib/gcc/x86_64-linux-gnu/11 .
 And in CMakeLists.txt add the following line:
 
 ```cmake
-set(CMAKE_CXX_FLAGS "--gcc-toolchain=/work/2023/serverless/cppless/toolchain_root ${CMAKE_CXX_FLAGS}")
+set(CMAKE_CXX_FLAGS "--gcc-toolchain=/absolute/path/to/toolchain_root ${CMAKE_CXX_FLAGS}")
 ```
 
 ## Benchmarks
