@@ -7,7 +7,7 @@ The architecture of the compiler, including benchmark evaluation, details can be
 When using Cppless, please cite our ACM TACO paper (to appear). An extended version of our paper is available on [arXiv](https://arxiv.org/abs/2401.10834).
 
 ```
-@misc{cppless2025,
+@article{cppless2025,
   author = {Copik, Marcin and M\"{o}ller, Lukas and Calotoiu, Alexandru and Hoefler, Torsten},
   title = {Cppless: Single-Source and High-Performance Serverless Programming in C++},
   year = {2025},
