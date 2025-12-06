@@ -8,13 +8,21 @@ When using Cppless, please cite our ACM TACO paper (to appear). An extended vers
 
 ```
 @misc{cppless2025,
-  title={Cppless: Single-Source and High-Performance Serverless Programming in C++}, 
-  author={Marcin Copik and Lukas Möller and Alexandru Calotoiu and Torsten Hoefler},
-  year={2025},
-  eprint={2401.10834},
-  archivePrefix={arXiv},
-  primaryClass={cs.DC},
-  url={https://arxiv.org/abs/2401.10834}, 
+  author = {Copik, Marcin and M\"{o}ller, Lukas and Calotoiu, Alexandru and Hoefler, Torsten},
+  title = {Cppless: Single-Source and High-Performance Serverless Programming in C++},
+  year = {2025},
+  issue_date = {September 2025},
+  publisher = {Association for Computing Machinery},
+  address = {New York, NY, USA},
+  volume = {22},
+  number = {3},
+  issn = {1544-3566},
+  url = {https://doi.org/10.1145/3747841},
+  doi = {10.1145/3747841},
+  journal = {ACM Trans. Archit. Code Optim.},
+  month = sep,
+  articleno = {110},
+  numpages = {27},
 }
 ```
 
